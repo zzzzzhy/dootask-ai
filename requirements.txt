@@ -1,0 +1,8 @@
+flask
+langchain
+langchain-openai
+langchain-anthropic
+langchain-google-genai
+zhipuai
+dashscope
+httpx[socks]
