@@ -46,7 +46,9 @@ def get_model_instance(model_type, model_name, api_key):
         elif model_type == "zhipu":
             return ZhipuAI(api_key=api_key)
         elif model_type == "qwen":
-            return Generation(api_key=api_key)
+            import dashscope
+            dashscope.api_key = api_key
+            return Generation
         elif model_type == "wenxin":
             erniebot.api_type = 'aistudio'
             erniebot.access_token = api_key
