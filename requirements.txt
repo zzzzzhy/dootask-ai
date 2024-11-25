@@ -5,4 +5,5 @@ langchain-anthropic
 langchain-google-genai
 zhipuai
 dashscope
+erniebot
 httpx[socks]

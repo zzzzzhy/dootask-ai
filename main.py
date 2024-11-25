@@ -4,6 +4,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from zhipuai import ZhipuAI
 from dashscope import Generation
+from erniebot import ChatCompletion
 from langchain_core.messages import HumanMessage
 import json
 import os
@@ -20,33 +21,67 @@ def get_model_instance(model_type, model_name, api_key):
     """
     根据模型类型返回对应的模型实例
     """
-    if model_type == "openai":
-        return ChatOpenAI(
-            model_name=model_name,
-            openai_api_key=api_key,
-            temperature=0.7,
-            streaming=True
-        )
-    elif model_type == "claude":
-        return ChatAnthropic(
-            model=model_name,
-            anthropic_api_key=api_key,
-            temperature=0.7,
-            streaming=True
-        )
-    elif model_type == "gemini":
-        return ChatGoogleGenerativeAI(
-            model=model_name,
-            google_api_key=api_key,
-            temperature=0.7,
-            streaming=True
-        )
-    elif model_type == "zhipu":
-        return ZhipuAI(api_key=api_key)
-    elif model_type == "qwen":
-        return Generation(api_key=api_key)
-    else:
-        raise ValueError(f"Unsupported model type: {model_type}")
+    try:
+        if model_type == "openai":
+            return ChatOpenAI(
+                model_name=model_name,
+                openai_api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "claude":
+            return ChatAnthropic(
+                model=model_name,
+                anthropic_api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "gemini":
+            return ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "zhipu":
+            return ZhipuAI(api_key=api_key)
+        elif model_type == "qwen":
+            return Generation(api_key=api_key)
+        elif model_type == "wenxin":
+            ChatCompletion.api_key = api_key
+            return ChatCompletion
+        elif model_type == "llama":
+            return ChatLlama(
+                model_name=model_name,
+                api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "cohere":
+            return ChatCohere(
+                model_name=model_name,
+                api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "eleutherai":
+            return ChatGPTNeoX(
+                model_name=model_name,
+                api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "mistral":
+            return ChatMistral(
+                model_name=model_name,
+                api_key=api_key,
+                temperature=0.7,
+                streaming=True
+            )
+        else:
+            raise ValueError(f"Unsupported model type: {model_type}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to create model instance: {str(e)}")
 
 @app.route('/', methods=['GET'])
 def chat():
@@ -96,8 +131,8 @@ def chat():
                     stream=True
                 )
                 for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
+                    if chunk.choices[0].delta.content:  # 修正访问方式
+                        content = chunk.choices[0].delta.content  # 修正访问方式
                         full_response += content
                         yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
             elif model_type == "qwen":
@@ -111,7 +146,42 @@ def chat():
                         content = chunk.output.text
                         full_response += content
                         yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
-            
+            elif model_type == "wenxin":
+                response = model.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": full_input}],
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.get('result'):
+                        content = chunk.get('result', '')
+                        full_response += content
+                        yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
+            elif model_type == "llama":
+                for chunk in model.stream([HumanMessage(content=full_input)]):
+                    if chunk.content:
+                        content = chunk.content
+                        full_response += content
+                        yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
+            elif model_type == "cohere":
+                for chunk in model.stream([HumanMessage(content=full_input)]):
+                    if chunk.content:
+                        content = chunk.content
+                        full_response += content
+                        yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
+            elif model_type == "eleutherai":
+                for chunk in model.stream([HumanMessage(content=full_input)]):
+                    if chunk.content:
+                        content = chunk.content
+                        full_response += content
+                        yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
+            elif model_type == "mistral":
+                for chunk in model.stream([HumanMessage(content=full_input)]):
+                    if chunk.content:
+                        content = chunk.content
+                        full_response += content
+                        yield f"id: {message_id}\nevent: append\ndata: {content}\n\n"
+
             # 仅当 content_id 存在时才更新上下文
             if content_id:
                 context_storage[content_id] = f"{full_input}\n{full_response}"
