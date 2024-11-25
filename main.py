@@ -4,8 +4,8 @@ from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 from zhipuai import ZhipuAI
 from dashscope import Generation
-from erniebot import ChatCompletion
 from langchain_core.messages import HumanMessage
+import erniebot
 import json
 import os
 
@@ -48,8 +48,9 @@ def get_model_instance(model_type, model_name, api_key):
         elif model_type == "qwen":
             return Generation(api_key=api_key)
         elif model_type == "wenxin":
-            ChatCompletion.api_key = api_key
-            return ChatCompletion
+            erniebot.api_type = 'aistudio'
+            erniebot.access_token = api_key
+            return erniebot.ChatCompletion
         elif model_type == "llama":
             return ChatLlama(
                 model_name=model_name,
