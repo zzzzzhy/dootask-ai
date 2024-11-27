@@ -23,6 +23,51 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
+# 检查超时的线程函数
+def check_timeouts():
+    while True:
+        try:
+            current_time = int(time.time())
+            # 找出所有超过1分钟且状态为processing的请求
+            timeout_ids = [
+                msg_id for msg_id, data in INPUT_STORAGE.items()
+                if current_time - data["created_at"] > 60 and data["status"] == "processing"
+            ]
+            
+            # 处理超时的请求
+            for msg_id in timeout_ids:
+                try:
+                    INPUT_STORAGE[msg_id]["request_client"].call({
+                        "update_id": msg_id,
+                        "update_mark": "no",
+                        "text": "Request timeout. Please try again.",
+                        "text_type": "md",
+                        "silence": "yes"
+                    })
+                    INPUT_STORAGE[msg_id]["status"] = "finished"
+                    INPUT_STORAGE[msg_id]["response"] = "Request timeout. Please try again."
+                except Exception:
+                    pass  # 忽略单个请求的处理错误
+            
+            # 清理超过10分钟的数据
+            expired_ids = [
+                msg_id for msg_id, data in INPUT_STORAGE.items()
+                if current_time - data["created_at"] > 600  # 10分钟 = 600秒
+            ]
+            for msg_id in expired_ids:
+                try:
+                    del INPUT_STORAGE[msg_id]
+                except Exception:
+                    pass  # 忽略删除错误
+                
+        except Exception:
+            pass  # 忽略检查过程中的错误
+        
+        time.sleep(1)  # 每秒检查一次
+
+# 启动超时检查线程
+threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
+
 # 处理聊天请求
 @app.route('/chat', methods=['GET'])
 def chat():
@@ -134,10 +179,10 @@ def chat():
         "context_key": context_key,
         "full_input": full_input,
         "request_client": request_client,
-        "stream_key": stream_key,
         
         "status": "processing",
         "created_at": int(time.time()),
+        "stream_key": stream_key,
         "response": ""
     }
 
@@ -146,34 +191,6 @@ def chat():
         "userid": msg_uid,
         "stream_url": f"/ai/stream/{send_id}/{stream_key}",
     }, action='stream')
-
-    # 创建超时检查函数
-    def check_timeout():
-        time.sleep(60)  # 等待1分钟
-        if send_id in INPUT_STORAGE and INPUT_STORAGE[send_id]["status"] == "processing":
-            # 如果1分钟后状态还是processing，更新消息
-            INPUT_STORAGE[send_id]["request_client"].call({
-                "update_id": send_id,
-                "update_mark": "no",
-                "text": "Request timeout. Please try again.",
-                "text_type": "md",
-                "silence": "yes"
-            })
-            # 更新状态
-            INPUT_STORAGE[send_id]["status"] = "finished"
-            INPUT_STORAGE[send_id]["response"] = "Request timeout. Please try again."
-
-    # 启动超时检查线程
-    threading.Thread(target=check_timeout, daemon=True).start()
-
-    # 清理超过10分钟的数据
-    current_time = int(time.time())
-    expired_ids = [
-        msg_id for msg_id, data in INPUT_STORAGE.items()
-        if current_time - data["created_at"] > 600  # 10分钟 = 600秒
-    ]
-    for msg_id in expired_ids:
-        del INPUT_STORAGE[msg_id]
 
     # 返回成功响应
     return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
@@ -186,14 +203,14 @@ def stream(msg_id, stream_key):
         msg_id = int(msg_id)
     except ValueError:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: Invalid msg id format\n\n",
+            f"id: {msg_id}\nevent: error\ndata: Invalid ID format\n\n",
             mimetype='text/event-stream'
         )
 
     # 检查 msg_id 是否在 INPUT_STORAGE 中
     if msg_id not in INPUT_STORAGE:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: Invalid msg id\n\n",
+            f"id: {msg_id}\nevent: error\ndata: No such ID\n\n",
             mimetype='text/event-stream'
         )
 
@@ -214,13 +231,6 @@ def stream(msg_id, stream_key):
     if data["status"] == "finished":
         return Response(
             f"id: {msg_id}\nevent: replace\ndata: {data['response']}\n\n",
-            mimetype='text/event-stream'
-        )
-
-    # 判断如果超过 180 秒，直接返回
-    if time.time() - data["created_at"] > 180:
-        return Response(
-            f"id: {msg_id}\nevent: error\ndata: Timeout\n\n",
             mimetype='text/event-stream'
         )
 

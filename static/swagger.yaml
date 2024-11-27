@@ -1,0 +1,205 @@
+openapi: 3.0.0
+info:
+  title: DooTask AI API
+  description: API documentation for DooTask AI service
+  version: 1.0.0
+  contact:
+    email: your-email@example.com
+
+servers:
+  - url: http://localhost:5001
+    description: Local development server
+
+paths:
+  /chat:
+    get:
+      tags:
+        - Chat
+      summary: Chat endpoint
+      description: Process chat messages and return responses
+      parameters:
+        - name: text
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Message text
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authentication token
+        - name: dialog_id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Dialog identifier
+        - name: dialog_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [group]
+          description: Type of dialog (e.g., group)
+        - name: msg_id
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            default: 0
+          description: Message identifier for replies in group chats
+        - name: msg_uid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Message user identifier
+        - name: mention
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            default: 0
+          description: Mention information
+        - name: bot_uid
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+          description: Bot user identifier
+        - name: version
+          in: query
+          required: true
+          schema:
+            type: string
+          description: API version
+        - name: extras
+          in: query
+          required: true
+          schema:
+            type: string
+            format: json
+            example: '{"model_type":"openai","model_name":"gpt-3.5-turbo","server_url":"https://api.example.com","api_key":"your-api-key","agency":"optional-agency"}'
+          description: |
+            JSON string containing additional parameters:
+            - model_type: AI model type (openai, claude, gemini, etc.)
+            - model_name: Model name (e.g., gpt-3.5-turbo)
+            - server_url: Server URL for API calls (required)
+            - api_key: API key for authentication (required)
+            - agency: Optional proxy server URL
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: Message ID for tracking the response
+                      key:
+                        type: string
+                        description: Stream key for accessing the response stream
+        '400':
+          description: Parameter error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 400
+                  error:
+                    type: string
+                    example: "Parameter error"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 500
+                  error:
+                    type: string
+                    example: "Failed to create model instance"
+
+  /stream/{msg_id}/{stream_key}:
+    get:
+      tags:
+        - Stream
+      summary: Stream endpoint
+      description: |
+        Stream responses for a given message ID. The response is sent as Server-Sent Events (SSE).
+        Events:
+          - append: Append new content to the response
+          - replace: Replace entire response content
+          - error: Error occurred during processing
+      parameters:
+        - name: msg_id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Message identifier
+        - name: stream_key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Stream key for authentication
+      responses:
+        '200':
+          description: Successful response
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  SSE stream with format:
+                  id: {msg_id}
+                  event: {event_type}
+                  data: {content}
+              example: |
+                id: 123456
+                event: append
+                data: Hello, how can I help you?
+
+                id: 123456
+                event: replace
+                data: Here's the complete response...
+
+  /swagger.yaml:
+    get:
+      tags:
+        - Documentation
+      summary: Get OpenAPI specification
+      description: Returns the OpenAPI/Swagger specification file
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+components:
+  schemas: {}
+  securitySchemes: {}
