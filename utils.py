@@ -74,27 +74,3 @@ def get_model_instance(model_type, model_name, api_key):
             raise ValueError(f"Unsupported model type: {model_type}")
     except Exception as e:
         raise RuntimeError(f"Failed to create model instance: {str(e)}")
-
-def call_request(server_url, version, token, action, data):
-    """
-    发送请求到服务器
-    """
-    if not server_url or not server_url.startswith(('http://', 'https://')):
-        return
-    
-    if action == "stream":
-        call_url = server_url + "/api/dialog/msg/stream"
-    else:
-        call_url = server_url + "/api/dialog/msg/sendtext"
-
-    try:
-        headers = {
-            'version': version,
-            'token': token
-        }
-        
-        response = requests.post(call_url, headers=headers, json=data, timeout=15)
-        response_json = response.json()
-        return response_json.get('data', {}).get('id')
-    except Exception:
-        pass

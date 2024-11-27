@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from langchain_core.messages import HumanMessage
-from utils import get_model_instance, call_request
+from utils import get_model_instance
+from request import Request
 import json
 import os
 import time
@@ -61,21 +62,16 @@ def chat():
     if dialog_type == 'group':
         reply_id = msg_id
 
-    # 创建消息
-    send_id = call_request(
-        server_url=server_url,
-        version=version,
-        token=token,
-        action='sendtext',
+    # 创建请求客户端
+    request_client = Request(server_url, version, token, dialog_id)
 
-        data={
-            "dialog_id": dialog_id,
-            "reply_id": reply_id,
-            "text": '...',
-            "text_type": "md",
-            "silence": "yes"
-        }
-    )
+    # 创建消息
+    send_id = request_client.call({
+        "reply_id": reply_id,
+        "text": '...',
+        "text_type": "md",
+        "silence": "yes"
+    })
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
 
@@ -90,36 +86,20 @@ def chat():
         if context_key in CONTEXT_STORAGE:
             del CONTEXT_STORAGE[context_key]
         # 调用回调
-        call_request(
-            server_url=server_url,
-            version=version,
-            token=token,
-            action='sendtext',
-
-            data={
-                "update_id": send_id,
-                "update_mark": "no",
-                "dialog_id": dialog_id,
-                "text": "Operation Successful",
-                "text_type": "md",
-                "silence": "yes"
-            }
-        )
+        request_client.call({
+            "update_id": send_id,
+            "update_mark": "no",
+            "text": "Operation Successful",
+            "text_type": "md",
+            "silence": "yes"
+        })
         return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
     # 通知 stream 地址
-    call_request(
-        server_url=server_url,
-        version=version,
-        token=token,
-        action='stream',
-        
-        data={
-            "dialog_id": dialog_id,
-            "userid": msg_uid,
-            "stream_url": f"/ai/stream/{send_id}/{stream_key}",
-        }
-    )
+    request_client.call({
+        "userid": msg_uid,
+        "stream_url": f"/ai/stream/{send_id}/{stream_key}",
+    }, action='stream')
 
     # 设置代理
     if agency:
@@ -131,21 +111,14 @@ def chat():
         model = get_model_instance(model_type, model_name, api_key)
     except Exception as e:
         error_message = str(e)
-        call_request(
-            server_url=server_url,
-            version=version,
-            token=token,
-            action='sendtext',
-
-            data={
-                "update_id": send_id,
-                "update_mark": "no",
-                "dialog_id": dialog_id,
-                "text": error_message,
-                "text_type": "md",
-                "silence": "yes"
-            }
-        )
+        # 调用回调
+        request_client.call({
+            "update_id": send_id,
+            "update_mark": "no",
+            "text": error_message,
+            "text_type": "md",
+            "silence": "yes"
+        })
         return jsonify({"code": 500, "error": error_message})
 
     # 还原代理
@@ -166,6 +139,7 @@ def chat():
         "model_name": model_name,
         "context_key": context_key,
         "full_input": full_input,
+        "request_client": request_client,
         "stream_key": stream_key,
         
         "status": "processing",
@@ -197,8 +171,8 @@ def stream(msg_id, stream_key):
 
     # 获取对应的参数
     data = INPUT_STORAGE[msg_id]
-    model, model_type, model_name, context_key, full_input = (
-        data["model"], data["model_type"], data["model_name"], data["context_key"], data["full_input"]
+    model, model_type, model_name, context_key, full_input, request_client = (
+        data["model"], data["model_type"], data["model_name"], data["context_key"], data["full_input"], data["request_client"]
     )
 
     # 检查 stream_key 是否正确
@@ -297,12 +271,19 @@ def stream(msg_id, stream_key):
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
 
-            # 更新状态、更新上下文
+            # 更新状态、上下文
             INPUT_STORAGE[msg_id]["status"] = "finished"
             INPUT_STORAGE[msg_id]["response"] = full_response
             CONTEXT_STORAGE[context_key] = f"{full_input}\n{full_response}"
 
-            # todo 调用回调
+            # 调用回调
+            request_client.call({
+                "update_id": msg_id,
+                "update_mark": "no",
+                "text": full_response,
+                "text_type": "md",
+                "silence": "yes"
+            })
 
         except Exception as e:
             yield f"id: {msg_id}\nevent: error\ndata: {str(e)}\n\n"
