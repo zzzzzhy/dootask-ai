@@ -1,19 +1,26 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
+from langchain_core.messages import HumanMessage
 from utils import get_model_instance, call_request
 import json
 import os
+import time
+import random
+import string
 import threading
 
 app = Flask(__name__)
 
 # 用于存储上下文的字典
-context_storage = {}
+CONTEXT_STORAGE = {}
 
 # 用于存数输入的字典
-input_storage = {}
+INPUT_STORAGE = {}
 
-# 全局变量设置
-PORT = int(os.environ.get('PORT', 5001))
+# 服务启动端口
+SERVER_PORT = int(os.environ.get('PORT', 5001))
+
+# 清空上下文的命令
+CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
 # 处理聊天请求
 @app.route('/chat', methods=['GET'])
@@ -72,29 +79,16 @@ def chat():
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
 
-    # 发送 stream 地址（异步）
-    threading.Thread(target=lambda: call_request(
-        server_url=server_url,
-        version=version,
-        token=token,
-        action='stream',
-        data={
-            "dialog_id": dialog_id,
-            "userid": msg_uid,
-            "stream_url": f"/ai/stream/{send_id}"
-        }
-    )).start()
-
-    # 定义清空上下文的命令列表
-    clear_commands = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
-
     # 定义上下文键
     context_key = f"{dialog_id}_{msg_uid}"
+
+    # 生成随机16位字符串
+    stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     
     # 检查是否是清空上下文的命令
-    if text in clear_commands:
-        if context_key in context_storage:
-            del context_storage[context_key]
+    if text in CLEAR_COMMANDS:
+        if context_key in CONTEXT_STORAGE:
+            del CONTEXT_STORAGE[context_key]
         # 调用回调
         call_request(
             server_url=server_url,
@@ -111,7 +105,26 @@ def chat():
                 "silence": "yes"
             }
         )
-        return jsonify({"code": 200, "data": {"id": send_id}})
+        return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
+
+    # 通知 stream 地址
+    call_request(
+        server_url=server_url,
+        version=version,
+        token=token,
+        action='stream',
+        
+        data={
+            "dialog_id": dialog_id,
+            "userid": msg_uid,
+            "stream_url": f"/ai/stream/{send_id}/{stream_key}",
+        }
+    )
+
+    # 设置代理
+    if agency:
+        os.environ['HTTP_PROXY'] = agency
+        os.environ['HTTPS_PROXY'] = agency
 
     # 获取对应的模型实例
     try:
@@ -135,56 +148,91 @@ def chat():
         )
         return jsonify({"code": 500, "error": error_message})
 
+    # 还原代理
+    if agency:
+        os.environ.pop('HTTP_PROXY', None)
+        os.environ.pop('HTTPS_PROXY', None)
+
     # 从上下文存储中获取上下文
-    context = context_storage.get(context_key, "") if context_key else ""
+    context = CONTEXT_STORAGE.get(context_key, "") if context_key else ""
 
     # 将用户输入与上下文结合
     full_input = f"{context}\n{text}" if context else text
 
-    # 将 full_input 根据 send_id 保存起来
-    input_storage[send_id] = {
+    # 将输入存储到 INPUT_STORAGE
+    INPUT_STORAGE[send_id] = {
         "model": model,
-        "agency": agency,
+        "model_type": model_type,
+        "model_name": model_name,
         "context_key": context_key,
         "full_input": full_input,
-        "status": "processing"
+        "stream_key": stream_key,
+        
+        "status": "processing",
+        "created_at": int(time.time()),
+        "response": ""
     }
 
-    # 返回消息 ID
-    return jsonify({"code": 200, "data": {"id": send_id}})
+    # 返回成功响应
+    return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
 # 处理流式响应
-@app.route('/stream/<msg_id>', methods=['GET'])
-def stream(msg_id):
-    # 检查 msg_id 是否在 input_storage 中
-    if msg_id not in input_storage:
+@app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
+def stream(msg_id, stream_key):
+    # 将 msg_id 转换为整数类型
+    try:
+        msg_id = int(msg_id)
+    except ValueError:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: Invalid msg_id\n\n",
+            f"id: {msg_id}\nevent: error\ndata: Invalid msg id format\n\n",
+            mimetype='text/event-stream'
+        )
+
+    # 检查 msg_id 是否在 INPUT_STORAGE 中
+    if msg_id not in INPUT_STORAGE:
+        return Response(
+            f"id: {msg_id}\nevent: error\ndata: Invalid msg id\n\n",
             mimetype='text/event-stream'
         )
 
     # 获取对应的参数
-    model = input_storage[msg_id]["model"]
-    model_type = model.model_type
-    model_name = model.name
-    agency = input_storage[msg_id]["agency"]
-    context_key = input_storage[msg_id]["context_key"]
-    full_input = input_storage[msg_id]["full_input"]
+    data = INPUT_STORAGE[msg_id]
+    model, model_type, model_name, context_key, full_input = (
+        data["model"], data["model_type"], data["model_name"], data["context_key"], data["full_input"]
+    )
 
-    # 设置代理
-    if agency:
-        os.environ['http_proxy'] = agency
-        os.environ['https_proxy'] = agency
+    # 检查 stream_key 是否正确
+    if stream_key != data["stream_key"]:
+        return Response(
+            f"id: {msg_id}\nevent: error\ndata: Invalid key\n\n",
+            mimetype='text/event-stream'
+        )
 
+    # 如果 status 为 finished，直接返回
+    if data["status"] == "finished":
+        return Response(
+            f"id: {msg_id}\nevent: replace\ndata: {data['response']}\n\n",
+            mimetype='text/event-stream'
+        )
+
+    # 判断如果超过 180 秒，直接返回
+    if time.time() - data["created_at"] > 180:
+        return Response(
+            f"id: {msg_id}\nevent: error\ndata: Timeout\n\n",
+            mimetype='text/event-stream'
+        )
+
+    # 根据不同的模型类型处理流式响应
     def generate():
         full_response = ""
         try:
-            # 根据不同的模型类型处理流式响应
+            # Openai、Claude、Gemini
             if model_type in ["openai", "claude", "gemini"]:
                 for chunk in model.stream([HumanMessage(content=full_input)]):
                     if chunk.content:
                         full_response += chunk.content
                         yield f"id: {msg_id}\nevent: append\ndata: {chunk.content}\n\n"
+            # 智谱AI
             elif model_type == "zhipu":
                 response = model.chat.completions.create(
                     model=model_name,
@@ -196,6 +244,7 @@ def stream(msg_id):
                         content = chunk.choices[0].delta.content
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # 通义千问
             elif model_type == "qwen":
                 response = model.call(
                     model=model_name,
@@ -207,6 +256,7 @@ def stream(msg_id):
                         content = chunk.output.text
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # 文心一言
             elif model_type == "wenxin":
                 response = model.create(
                     model=model_name,
@@ -218,24 +268,28 @@ def stream(msg_id):
                         content = chunk.get('result', '')
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # LLaMA
             elif model_type == "llama":
                 for chunk in model.stream([HumanMessage(content=full_input)]):
                     if chunk.content:
                         content = chunk.content
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # Cohere
             elif model_type == "cohere":
                 for chunk in model.stream([HumanMessage(content=full_input)]):
                     if chunk.content:
                         content = chunk.content
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # EleutherAI
             elif model_type == "eleutherai":
                 for chunk in model.stream([HumanMessage(content=full_input)]):
                     if chunk.content:
                         content = chunk.content
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            # Mistral AI
             elif model_type == "mistral":
                 for chunk in model.stream([HumanMessage(content=full_input)]):
                     if chunk.content:
@@ -243,15 +297,17 @@ def stream(msg_id):
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
 
-            # 更新状态
-            input_storage[msg_id]["status"] = "completed"
+            # 更新状态、更新上下文
+            INPUT_STORAGE[msg_id]["status"] = "finished"
+            INPUT_STORAGE[msg_id]["response"] = full_response
+            CONTEXT_STORAGE[context_key] = f"{full_input}\n{full_response}"
 
-            # 更新上下文
-            context_storage[context_key] = f"{full_input}\n{full_response}"
+            # todo 调用回调
 
         except Exception as e:
             yield f"id: {msg_id}\nevent: error\ndata: {str(e)}\n\n"
 
+    # 返回流式响应
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream'
@@ -263,4 +319,4 @@ def swagger():
     return app.send_static_file('swagger.yaml')
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=PORT)
+    app.run(host='0.0.0.0', port=SERVER_PORT)
