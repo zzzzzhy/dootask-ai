@@ -95,12 +95,6 @@ def chat():
         })
         return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
-    # 通知 stream 地址
-    request_client.call({
-        "userid": msg_uid,
-        "stream_url": f"/ai/stream/{send_id}/{stream_key}",
-    }, action='stream')
-
     # 设置代理
     if agency:
         os.environ['HTTP_PROXY'] = agency
@@ -146,6 +140,40 @@ def chat():
         "created_at": int(time.time()),
         "response": ""
     }
+
+    # 通知 stream 地址
+    request_client.call({
+        "userid": msg_uid,
+        "stream_url": f"/ai/stream/{send_id}/{stream_key}",
+    }, action='stream')
+
+    # 创建超时检查函数
+    def check_timeout():
+        time.sleep(60)  # 等待1分钟
+        if send_id in INPUT_STORAGE and INPUT_STORAGE[send_id]["status"] == "processing":
+            # 如果1分钟后状态还是processing，更新消息
+            INPUT_STORAGE[send_id]["request_client"].call({
+                "update_id": send_id,
+                "update_mark": "no",
+                "text": "Request timeout. Please try again.",
+                "text_type": "md",
+                "silence": "yes"
+            })
+            # 更新状态
+            INPUT_STORAGE[send_id]["status"] = "finished"
+            INPUT_STORAGE[send_id]["response"] = "Request timeout. Please try again."
+
+    # 启动超时检查线程
+    threading.Thread(target=check_timeout, daemon=True).start()
+
+    # 清理超过10分钟的数据
+    current_time = int(time.time())
+    expired_ids = [
+        msg_id for msg_id, data in INPUT_STORAGE.items()
+        if current_time - data["created_at"] > 600  # 10分钟 = 600秒
+    ]
+    for msg_id in expired_ids:
+        del INPUT_STORAGE[msg_id]
 
     # 返回成功响应
     return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
@@ -276,7 +304,7 @@ def stream(msg_id, stream_key):
             INPUT_STORAGE[msg_id]["response"] = full_response
             CONTEXT_STORAGE[context_key] = f"{full_input}\n{full_response}"
 
-            # 调用回调
+            # 更新完整消息
             request_client.call({
                 "update_id": msg_id,
                 "update_mark": "no",
