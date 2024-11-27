@@ -7,3 +7,4 @@ zhipuai
 dashscope
 erniebot
 httpx[socks]
+requests>=2.31.0
