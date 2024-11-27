@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from utils import get_model_instance, call_request
 import json
 import os
+import threading
 
 app = Flask(__name__)
 
@@ -72,20 +73,17 @@ def chat():
         return jsonify({"code": 400, "error": "Send message failed"})
 
     # 发送 stream 地址（异步）
-    asyncio.create_task(
-        call_request(
-            server_url=server_url,
-            version=version,
-            token=token,
-            action='stream',
-
-            data={
-                "dialog_id": dialog_id,
-                "userid": msg_uid,
-                "stream_url": "/ai/stream/" + send_id
-            }
-        )
-    )
+    threading.Thread(target=lambda: call_request(
+        server_url=server_url,
+        version=version,
+        token=token,
+        action='stream',
+        data={
+            "dialog_id": dialog_id,
+            "userid": msg_uid,
+            "stream_url": f"/ai/stream/{send_id}"
+        }
+    )).start()
 
     # 定义清空上下文的命令列表
     clear_commands = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
