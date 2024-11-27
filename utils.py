@@ -75,28 +75,26 @@ def get_model_instance(model_type, model_name, api_key):
     except Exception as e:
         raise RuntimeError(f"Failed to create model instance: {str(e)}")
 
-def callback_status(server_url, version, token, update_id, dialog_id, text, update_mark='no', text_type='md', silence='yes'):
+def call_request(server_url, version, token, action, data):
     """
-    回调状态到指定服务器
+    发送请求到服务器
     """
     if not server_url or not server_url.startswith(('http://', 'https://')):
         return
     
+    if action == "stream":
+        call_url = server_url + "/api/dialog/msg/stream"
+    else:
+        call_url = server_url + "/api/dialog/msg/sendtext"
+
     try:
         headers = {
             'version': version,
             'token': token
         }
         
-        data = {
-            'update_id': update_id,
-            'update_mark': update_mark,
-            'dialog_id': dialog_id,
-            'text': text,
-            'text_type': text_type,
-            'silence': silence
-        }
-        
-        requests.post(server_url, headers=headers, json=data, timeout=15)
+        response = requests.post(call_url, headers=headers, json=data, timeout=15)
+        response_json = response.json()
+        return response_json.get('data', {}).get('id')
     except Exception:
-        pass  # 忽略回调错误
+        pass
