@@ -52,7 +52,7 @@ def check_timeouts():
 threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
 
 # 处理聊天请求
-@app.route('/chat', methods=['POST'])
+@app.route('/chat', methods=['POST', 'GET'])
 def chat():
     # 优先从 header 获取配置，如果不存在则从 POST 参数获取
     text = request.args.get('text') or request.form.get('text')
@@ -106,6 +106,12 @@ def chat():
     # 定义上下文键
     context_key = f"{dialog_id}_{msg_uid}"
 
+    # 从 Redis 获取上下文
+    context = redis_manager.get_context(context_key)
+
+    # 将用户输入与上下文结合
+    full_input = f"{context}\n{text}" if context else text
+
     # 生成随机16位字符串
     stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     
@@ -122,45 +128,12 @@ def chat():
         })
         return jsonify({"code": 0, "msg": "success", "data": None})
 
-    # 设置代理
-    if agency:
-        os.environ['HTTP_PROXY'] = agency
-        os.environ['HTTPS_PROXY'] = agency
-
-    # 获取对应的模型实例
-    try:
-        model = get_model_instance(model_type, model_name, api_key)
-    except Exception as e:
-        error_message = str(e)
-        # 调用回调
-        request_client.call({
-            "update_id": send_id,
-            "update_mark": "no",
-            "text": error_message,
-            "text_type": "md",
-            "silence": "yes"
-        })
-        return jsonify({"code": 500, "error": error_message})
-
-    # 还原代理
-    if agency:
-        os.environ.pop('HTTP_PROXY', None)
-        os.environ.pop('HTTPS_PROXY', None)
-
-    # 从 Redis 获取上下文
-    context = redis_manager.get_context(context_key)
-
-    # 将用户输入与上下文结合
-    full_input = f"{context}\n{text}" if context else text
-
     # 将输入存储到 Redis
     redis_manager.set_input(send_id, {
-        "model": model,
         "model_type": model_type,
         "model_name": model_name,
         "context_key": context_key,
         "full_input": full_input,
-        "request_client": request_client,
         "server_url": server_url,
         "version": version,
         "token": token,
@@ -168,6 +141,8 @@ def chat():
         "status": "processing",
         "created_at": int(time.time()),
         "stream_key": stream_key,
+        "api_key": api_key,
+        "agency": agency,
     })
 
     # 通知 stream 地址
@@ -180,11 +155,8 @@ def chat():
     return jsonify({"code": 0, "msg": "success", "data": {"id": send_id, "key": stream_key}})
 
 # 处理流式响应
-@app.route('/stream', methods=['GET'])
-def stream():
-    msg_id = request.args.get('msg_id', '')
-    stream_key = request.args.get('stream_key', '')
-
+@app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
+def stream(msg_id, stream_key):
     if not stream_key:
         return Response(
             f"id: {msg_id}\nevent: error\ndata: No stream key\n\n",
@@ -200,8 +172,8 @@ def stream():
         )
 
     # 获取对应的参数
-    model, model_type, model_name, context_key, full_input, request_client = (
-        data["model"], data["model_type"], data["model_name"], data["context_key"], data["full_input"], data["request_client"]
+    model_type, model_name, context_key, full_input, request_client = (
+        data["model_type"], data["model_name"], data["context_key"], data["full_input"], Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
     )
 
     # 检查 stream_key 是否正确
@@ -222,6 +194,14 @@ def stream():
     def generate():
         full_response = ""
         try:
+            # 设置代理
+            if data.get("agency"):
+                os.environ['HTTP_PROXY'] = data["agency"]
+                os.environ['HTTPS_PROXY'] = data["agency"]
+
+            # 获取对应的模型实例
+            model = get_model_instance(model_type, model_name, data["api_key"])
+
             # Openai、Claude、Gemini
             if model_type in ["openai", "claude", "gemini"]:
                 for chunk in model.stream([HumanMessage(content=full_input)]):
@@ -313,8 +293,11 @@ def stream():
                 "silence": "yes"
             })
 
-        except Exception as e:
-            yield f"id: {msg_id}\nevent: error\ndata: {str(e)}\n\n"
+        finally:
+            # 清理代理设置
+            if data.get("agency"):
+                os.environ.pop('HTTP_PROXY', None)
+                os.environ.pop('HTTPS_PROXY', None)
 
     # 返回流式响应
     return Response(
@@ -328,7 +311,7 @@ def health_check():
     try:
         # 检查 Redis 连接
         redis_manager = RedisManager()
-        redis_manager.redis_client.ping()
+        redis_manager.client.ping()
         return jsonify({"status": "healthy", "redis": "connected"}), 200
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 500

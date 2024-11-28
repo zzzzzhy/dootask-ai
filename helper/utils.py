@@ -41,6 +41,7 @@ def get_model_instance(model_type, model_name, api_key):
         elif model_type == "wenxin":
             erniebot.api_type = 'aistudio'
             erniebot.access_token = api_key
+            erniebot.api_key = api_key
             return erniebot.ChatCompletion
         elif model_type == "llama":
             return ChatLlama(
