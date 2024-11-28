@@ -126,7 +126,7 @@ def chat():
             "text_type": "md",
             "silence": "yes"
         })
-        return jsonify({"code": 0, "msg": "success", "data": None})
+        return jsonify({"code": 200, "msg": "success", "data": None})
 
     # 将输入存储到 Redis
     redis_manager.set_input(send_id, {
@@ -152,7 +152,7 @@ def chat():
     }, action='stream')
 
     # 返回成功响应
-    return jsonify({"code": 0, "msg": "success", "data": {"id": send_id, "key": stream_key}})
+    return jsonify({"code": 200, "msg": "success", "data": {"id": send_id, "key": stream_key}})
 
 # 处理流式响应
 @app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
@@ -230,8 +230,8 @@ def stream(msg_id, stream_key):
                 for chunk in response:
                     if chunk.output and chunk.output.text:
                         content = chunk.output.text
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+                        full_response = content
+                        yield f"id: {msg_id}\nevent: replace\ndata: {content}\n\n"
             # 文心一言
             elif model_type == "wenxin":
                 response = model.create(
