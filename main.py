@@ -58,10 +58,8 @@ def chat():
     if not all([model_type, model_name, server_url, api_key]):
         return jsonify({"code": 400, "error": "Parameter error in extras"})
 
-    # 如果是群聊，reply_id（回复消息） 为 msg_id
-    reply_id = '0'
-    if dialog_type == 'group':
-        reply_id = msg_id
+    # 群里使用回复消息模式
+    reply_id = int(msg_id) if dialog_type == 'group' else 0
 
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
@@ -150,9 +148,6 @@ def stream(msg_id, stream_key):
         data["model_type"], data["model_name"], data["context_key"], data["full_input"]
     )
 
-    # 创建请求客户端
-    request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
-
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
         return Response(
@@ -173,6 +168,14 @@ def stream(msg_id, stream_key):
         model_name=model_name,
         api_key=data["api_key"],
         agency=data.get("agency")
+    )
+
+    # 创建请求客户端
+    request_client = Request(
+        server_url=data["server_url"], 
+        version=data["version"], 
+        token=data["token"], 
+        dialog_id=data["dialog_id"]
     )
 
     # 使用统一的 LangChain 接口处理流式响应
