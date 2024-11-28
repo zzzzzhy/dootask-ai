@@ -26,16 +26,16 @@ class RedisManager:
         data = self.client.get(self._make_key("context", key))
         return json.loads(data) if data else None
 
-    def set_context(self, key, value, expire=3600):
+    def set_context(self, key, value):
         """设置上下文到 Redis"""
-        self.client.setex(self._make_key("context", key), expire, json.dumps(value))
+        self.client.set(self._make_key("context", key), json.dumps(value))
 
     def get_input(self, key):
         """从 Redis 获取输入"""
         data = self.client.get(self._make_key("input", key))
         return json.loads(data) if data else None
 
-    def set_input(self, key, value, expire=3600):
+    def set_input(self, key, value, expire=600):
         """设置输入到 Redis"""
         self.client.setex(self._make_key("input", key), expire, json.dumps(value))
 
@@ -66,9 +66,3 @@ class RedisManager:
             data = self.get_context(key_id)
             if data:
                 yield key_id, data
-
-    def cleanup_expired_data(self, max_age_seconds=600):
-        """清理过期数据"""
-        for key in self.client.scan_iter(f"{self._prefix}*"):
-            if not self.client.ttl(key):  # 如果键没有过期时间
-                self.client.delete(key)

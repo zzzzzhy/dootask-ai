@@ -42,10 +42,6 @@ def check_timeouts():
                             "text_type": "md",
                             "silence": "yes"
                         })
-            
-            # 清理超过30分钟的数据
-            redis_manager.cleanup_expired_data(1800)
-                
         except Exception as e:
             print(f"Error in timeout checker: {str(e)}")
         time.sleep(1)
