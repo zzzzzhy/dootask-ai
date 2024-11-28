@@ -1,5 +1,5 @@
 # 构建阶段
-FROM python:3.11-slim-bookworm as builder
+FROM python:3.11-slim-bookworm AS builder
 
 # 设置工作目录
 WORKDIR /app

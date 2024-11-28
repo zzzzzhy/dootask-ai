@@ -281,13 +281,16 @@ docker-compose down
 
 可以通过环境变量配置服务：
 
-- `PORT`: 服务端口（默认：5001）
-- `WORKERS`: Gunicorn 工作进程数（默认：4）
-- `TIMEOUT`: 请求超时时间（默认：120秒）
-- `REDIS_HOST`: Redis 主机地址（默认：localhost）
-- `REDIS_PORT`: Redis 端口（默认：6379）
-- `HTTP_PROXY`: HTTP 代理服务器
-- `HTTPS_PROXY`: HTTPS 代理服务器
+| 变量名 | 说明 | 默认值 |
+|--------|------|--------|
+| PORT | 服务端口 | 5001 |
+| WORKERS | 工作进程数 | 4 |
+| TIMEOUT | 超时时间（秒） | 120 |
+| REDIS_HOST | Redis 主机地址 | localhost |
+| REDIS_PORT | Redis 端口 | 6379 |
+| REDIS_DB | Redis 数据库编号 | 0 |
+| HTTP_PROXY | HTTP 代理地址 | 无 |
+| HTTPS_PROXY | HTTPS 代理地址 | 无 |
 
 ### 代理配置
 
