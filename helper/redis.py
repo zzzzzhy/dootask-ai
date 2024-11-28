@@ -47,25 +47,8 @@ CONTEXT_LIMITS = {
         "ernie-bot": 32000,      # 约 8k tokens
         "default": 32000
     },
-    "llama": {
-        "llama-2-7b": 16000,   # 约 4k tokens
-        "llama-2-13b": 16000,  # 约 4k tokens
-        "llama-2-70b": 16000,  # 约 4k tokens
-        "default": 16000
-    },
     "cohere": {
         "command-r": 32000,    # 约 8k tokens
-        "default": 32000
-    },
-    "eleutherai": {
-        "gpt-neo": 8000,      # 约 2k tokens
-        "gpt-j": 8000,        # 约 2k tokens
-        "gpt-neox": 8000,     # 约 2k tokens
-        "default": 8000
-    },
-    "mistral": {
-        "mistral-7b": 32000,     # 约 8k tokens
-        "mistral-mixtral": 32000, # 约 8k tokens
         "default": 32000
     },
     "default": 12000               # 全局默认限制

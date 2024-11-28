@@ -30,21 +30,9 @@ DooTask AI 是一个灵活的 AI 对话服务，支持多种 AI 模型，提供�
    - model_name: ernie-bot-4, ernie-bot-8k, ernie-bot-turbo, ernie-bot
    - 特点：擅长中文理解和生成的模型
 
-7. **Meta LLaMA** (model_type: llama)
-   - model_name: llama-2-7b, llama-2-13b, llama-2-70b
-   - 特点：Meta开发的开源语言模型，适用于多种NLP任务
-
-8. **Cohere** (model_type: cohere)
+7. **Cohere** (model_type: cohere)
    - model_name: command-r
    - 特点：适用于文本生成、分类和搜索等任务
-
-9. **EleutherAI** (model_type: eleutherai)
-   - model_name: gpt-neo, gpt-j, gpt-neox
-   - 特点：开源语言模型，提供与OpenAI GPT相似的功能
-
-10. **Mistral** (model_type: mistral)
-    - model_name: mistral-7b, mistral-mixtral
-    - 特点：高效语言模型，适用于多种生成和理解任务
 
 ### 核心功能
 

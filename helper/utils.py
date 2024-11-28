@@ -1,9 +1,9 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-from zhipuai import ZhipuAI
-from dashscope import Generation
-import erniebot
+from langchain_community.chat_models import QianWen, ErnieBot
+from langchain_zhipuai import ChatZhipuAI
+from langchain_community.chat_models import ChatCohere
 import requests
 
 def get_model_instance(model_type, model_name, api_key):
@@ -33,40 +33,27 @@ def get_model_instance(model_type, model_name, api_key):
                 streaming=True
             )
         elif model_type == "zhipu":
-            return ZhipuAI(api_key=api_key)
-        elif model_type == "qwen":
-            import dashscope
-            dashscope.api_key = api_key
-            return Generation
-        elif model_type == "wenxin":
-            erniebot.api_type = 'aistudio'
-            erniebot.access_token = api_key
-            erniebot.api_key = api_key
-            return erniebot.ChatCompletion
-        elif model_type == "llama":
-            return ChatLlama(
-                model_name=model_name,
+            return ChatZhipuAI(
                 api_key=api_key,
+                model=model_name,
                 temperature=0.7,
+                streaming=True
+            )
+        elif model_type == "qwen":
+            return QianWen(
+                api_key=api_key,
+                model=model_name,
+                streaming=True
+            )
+        elif model_type == "wenxin":
+            return ErnieBot(
+                api_key=api_key,
+                model=model_name,
                 streaming=True
             )
         elif model_type == "cohere":
             return ChatCohere(
-                model_name=model_name,
-                api_key=api_key,
-                temperature=0.7,
-                streaming=True
-            )
-        elif model_type == "eleutherai":
-            return ChatGPTNeoX(
-                model_name=model_name,
-                api_key=api_key,
-                temperature=0.7,
-                streaming=True
-            )
-        elif model_type == "mistral":
-            return ChatMistral(
-                model_name=model_name,
+                model=model_name,
                 api_key=api_key,
                 temperature=0.7,
                 streaming=True

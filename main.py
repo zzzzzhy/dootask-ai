@@ -192,7 +192,10 @@ def stream(msg_id, stream_key):
             mimetype='text/event-stream'
         )
 
-    # 根据不同的模型类型处理流式响应
+    # 获取对应的模型实例
+    model = get_model_instance(model_type, model_name, data["api_key"])
+
+    # 使用统一的 LangChain 接口处理流式响应
     def generate():
         full_response = ""
         try:
@@ -201,79 +204,10 @@ def stream(msg_id, stream_key):
                 os.environ['HTTP_PROXY'] = data["agency"]
                 os.environ['HTTPS_PROXY'] = data["agency"]
 
-            # 获取对应的模型实例
-            model = get_model_instance(model_type, model_name, data["api_key"])
-
-            # Openai、Claude、Gemini
-            if model_type in ["openai", "claude", "gemini"]:
-                for chunk in model.stream([HumanMessage(content=full_input)]):
-                    if chunk.content:
-                        full_response += chunk.content
-                        yield f"id: {msg_id}\nevent: append\ndata: {chunk.content}\n\n"
-            # 智谱AI
-            elif model_type == "zhipu":
-                response = model.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": full_input}],
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
-            # 通义千问
-            elif model_type == "qwen":
-                response = model.call(
-                    model=model_name,
-                    messages=[{"role": "user", "content": full_input}],
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.output and chunk.output.text:
-                        content = chunk.output.text
-                        full_response = content
-                        yield f"id: {msg_id}\nevent: replace\ndata: {content}\n\n"
-            # 文心一言
-            elif model_type == "wenxin":
-                response = model.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": full_input}],
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.get('result'):
-                        content = chunk.get('result', '')
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
-            # LLaMA
-            elif model_type == "llama":
-                for chunk in model.stream([HumanMessage(content=full_input)]):
-                    if chunk.content:
-                        content = chunk.content
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
-            # Cohere
-            elif model_type == "cohere":
-                for chunk in model.stream([HumanMessage(content=full_input)]):
-                    if chunk.content:
-                        content = chunk.content
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
-            # EleutherAI
-            elif model_type == "eleutherai":
-                for chunk in model.stream([HumanMessage(content=full_input)]):
-                    if chunk.content:
-                        content = chunk.content
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
-            # Mistral AI
-            elif model_type == "mistral":
-                for chunk in model.stream([HumanMessage(content=full_input)]):
-                    if chunk.content:
-                        content = chunk.content
-                        full_response += content
-                        yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
+            for chunk in model.stream([HumanMessage(content=full_input)]):
+                if chunk.content:
+                    full_response += chunk.content
+                    yield f"id: {msg_id}\nevent: append\ndata: {chunk.content}\n\n"
 
             # 保存响应并更新上下文
             data["status"] = "finished"

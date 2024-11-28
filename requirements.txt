@@ -3,9 +3,8 @@ langchain
 langchain-openai
 langchain-anthropic
 langchain-google-genai
-zhipuai
-dashscope
-erniebot
+langchain-zhipuai
+langchain-community
 httpx[socks]
 requests>=2.31.0
 redis>=5.0.0
