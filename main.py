@@ -314,6 +314,10 @@ def stream(msg_id, stream_key):
             INPUT_STORAGE[msg_id]["response"] = full_response
             CONTEXT_STORAGE[context_key] = f"{full_input}\n{full_response}"
 
+            # 清空 model、request_client 释放内存
+            INPUT_STORAGE[msg_id]["model"] = None
+            INPUT_STORAGE[msg_id]["request_client"] = None
+
             # 更新完整消息
             request_client.call({
                 "update_id": msg_id,
