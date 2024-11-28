@@ -275,11 +275,11 @@ def stream(msg_id, stream_key):
                         full_response += content
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
 
-            # 更新状态、上下文
+            # 保存响应并更新上下文
             data["status"] = "finished"
             data["response"] = full_response
             redis_manager.set_input(msg_id, data)
-            redis_manager.set_context(context_key, f"{full_input}\n{full_response}")
+            redis_manager.set_context(context_key, f"{full_input}\n{full_response}", model_type, model_name)
 
             # 更新完整消息
             request_client.call({
