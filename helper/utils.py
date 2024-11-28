@@ -7,8 +7,11 @@ from langchain_community.chat_models import (
     ErnieBotChat,
     ChatCohere
 )
+from .request import Request
+from .redis import RedisManager
 import requests
 import os
+import time
 
 def get_model_instance(model_type, model_name, api_key, agency=None):
     """根据模型类型返回对应的模型实例"""
@@ -60,3 +63,28 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
         if agency:
             os.environ.pop("HTTPS_PROXY", None)
             os.environ.pop("HTTP_PROXY", None)
+
+def check_timeouts():
+    redis_manager = RedisManager()
+    while True:
+        try:
+            # 使用 RedisManager 扫描所有处理中的请求
+            current_time = int(time.time())
+            for key_id, data in redis_manager.scan_inputs():
+                if data and data.get("status") == "processing":
+                    if current_time - data.get("created_at", 0) > 60:
+                        # 超时处理
+                        data["status"] = "finished"
+                        data["response"] = "Request timeout. Please try again."
+                        redis_manager.set_input(key_id, data)
+                        request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
+                        request_client.call({
+                            "update_id": key_id,
+                            "update_mark": "no",
+                            "text": "Request timeout. Please try again.",
+                            "text_type": "md",
+                            "silence": "yes"
+                        })
+        except Exception as e:
+            print(f"Error in timeout checker: {str(e)}")
+        time.sleep(1)

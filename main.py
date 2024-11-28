@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from langchain_core.messages import HumanMessage
-from helper.utils import get_model_instance
+from helper.utils import get_model_instance, check_timeouts
 from helper.request import Request
 from helper.redis import RedisManager
 import json
@@ -18,36 +18,11 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
-# 创建 RedisManager
-redis_manager = RedisManager()
-
-# 检查超时的线程函数
-def check_timeouts():
-    while True:
-        try:
-            # 使用 RedisManager 扫描所有处理中的请求
-            current_time = int(time.time())
-            for key_id, data in redis_manager.scan_inputs():
-                if data and data.get("status") == "processing":
-                    if current_time - data.get("created_at", 0) > 60:
-                        # 超时处理
-                        data["status"] = "finished"
-                        data["response"] = "Request timeout. Please try again."
-                        redis_manager.set_input(key_id, data)
-                        request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
-                        request_client.call({
-                            "update_id": key_id,
-                            "update_mark": "no",
-                            "text": "Request timeout. Please try again.",
-                            "text_type": "md",
-                            "silence": "yes"
-                        })
-        except Exception as e:
-            print(f"Error in timeout checker: {str(e)}")
-        time.sleep(1)
-
 # 启动超时检查线程
 threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
+
+# 创建 RedisManager
+redis_manager = RedisManager()
 
 # 处理聊天请求
 @app.route('/chat', methods=['POST', 'GET'])
