@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   app:
     build: .
@@ -11,6 +9,8 @@ services:
       - TIMEOUT=${TIMEOUT:-120}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - HTTP_PROXY=${HTTP_PROXY:-}
+      - HTTPS_PROXY=${HTTPS_PROXY:-}
     depends_on:
       - redis
 

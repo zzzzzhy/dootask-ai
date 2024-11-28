@@ -70,6 +70,8 @@ DooTask AI 是一个灵活的 AI 对话服务，支持多种 AI 模型，提供�
 
 ### 安装
 
+#### 方式一：直接安装
+
 1. 克隆仓库：
 ```bash
 git clone [repository-url]
@@ -98,6 +100,33 @@ pip install -r requirements.txt
 4. 启动服务：
 ```bash
 python main.py
+```
+
+#### 方式二：Docker 部署
+
+1. 克隆仓库：
+```bash
+git clone [repository-url]
+cd dootask-ai
+```
+
+2. 构建并启动服务：
+```bash
+# 构建镜像并启动服务（首次部署或代码更新时使用）
+docker-compose up --build -d
+
+# 仅启动服务（镜像已存在时使用）
+docker-compose up -d
+```
+
+3. 查看服务日志：
+```bash
+docker-compose logs -f app
+```
+
+4. 停止服务：
+```bash
+docker-compose down
 ```
 
 默认服务端口为 5001，可通过环境变量 PORT 修改。
@@ -257,6 +286,36 @@ docker-compose down
 - `TIMEOUT`: 请求超时时间（默认：120秒）
 - `REDIS_HOST`: Redis 主机地址（默认：localhost）
 - `REDIS_PORT`: Redis 端口（默认：6379）
+- `HTTP_PROXY`: HTTP 代理服务器
+- `HTTPS_PROXY`: HTTPS 代理服务器
+
+### 代理配置
+
+对于某些需要代理访问的模型（如 Gemini），可以通过以下方式配置代理：
+
+1. 环境变量方式：
+```bash
+export HTTP_PROXY=socks5://proxyuser:password@host:port
+export HTTPS_PROXY=socks5://proxyuser:password@host:port
+docker-compose up
+```
+
+2. API 调用时指定：
+```json
+{
+    "extras": {
+        "model_type": "gemini",
+        "model_name": "gemini-pro",
+        "api_key": "your-api-key",
+        "agency": "socks5://proxyuser:password@host:port"
+    }
+}
+```
+
+注意：使用代理时请确保：
+- 代理服务器稳定可用
+- 代理服务器支持相应的协议（HTTP/HTTPS/SOCKS5）
+- 如有需要，正确配置代理认证信息
 
 ## 注意事项
 
