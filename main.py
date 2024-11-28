@@ -224,6 +224,7 @@ def stream(msg_id, stream_key):
                 "silence": "yes"
             })
         except Exception as e:
+            # 处理异常
             data["status"] = "finished"
             data["response"] = str(e)
             redis_manager.set_input(msg_id, data)
