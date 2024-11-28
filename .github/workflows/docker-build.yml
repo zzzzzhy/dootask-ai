@@ -59,16 +59,40 @@ jobs:
           fail_ci_if_error: false
           verbose: true
 
+      - name: Create docker-compose.test.yml
+        run: |
+          cat > docker-compose.test.yml << 'EOL'
+          services:
+            app:
+              build: .
+              ports:
+                - "5001:5001"
+              environment:
+                - PORT=5001
+                - WORKERS=4
+                - TIMEOUT=120
+                - REDIS_HOST=redis
+                - REDIS_PORT=6379
+              depends_on:
+                - redis
+
+            redis:
+              image: redis:7-alpine
+              ports:
+                - "6380:6379"
+              command: redis-server --appendonly yes
+          EOL
+
       - name: Test docker compose
         run: |
-          docker compose version
-          docker compose config
-          docker compose up -d
+          docker compose -f docker-compose.test.yml version
+          docker compose -f docker-compose.test.yml config
+          docker compose -f docker-compose.test.yml up -d
           sleep 10
-          docker compose ps
+          docker compose -f docker-compose.test.yml ps
           curl -f http://localhost:5001/health || exit 1
-          docker compose logs
-          docker compose down
+          docker compose -f docker-compose.test.yml logs
+          docker compose -f docker-compose.test.yml down
 
   build:
     needs: test
