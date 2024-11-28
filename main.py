@@ -193,17 +193,17 @@ def stream(msg_id, stream_key):
         )
 
     # 获取对应的模型实例
-    model = get_model_instance(model_type, model_name, data["api_key"])
+    model = get_model_instance(
+        model_type=model_type,
+        model_name=model_name,
+        api_key=data["api_key"],
+        agency=data.get("agency")
+    )
 
     # 使用统一的 LangChain 接口处理流式响应
     def generate():
         full_response = ""
         try:
-            # 设置代理
-            if data.get("agency"):
-                os.environ['HTTP_PROXY'] = data["agency"]
-                os.environ['HTTPS_PROXY'] = data["agency"]
-
             for chunk in model.stream([HumanMessage(content=full_input)]):
                 if chunk.content:
                     full_response += chunk.content
@@ -223,12 +223,17 @@ def stream(msg_id, stream_key):
                 "text_type": "md",
                 "silence": "yes"
             })
-
-        finally:
-            # 清理代理设置
-            if data.get("agency"):
-                os.environ.pop('HTTP_PROXY', None)
-                os.environ.pop('HTTPS_PROXY', None)
+        except Exception as e:
+            data["status"] = "finished"
+            data["response"] = str(e)
+            redis_manager.set_input(msg_id, data)
+            request_client.call({
+                "update_id": msg_id,
+                "update_mark": "no",
+                "text": str(e),
+                "text_type": "md",
+                "silence": "yes"
+            })
 
     # 返回流式响应
     return Response(
