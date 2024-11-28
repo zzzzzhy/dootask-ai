@@ -26,11 +26,13 @@ def check_timeouts():
     while True:
         try:
             # 使用 RedisManager 扫描所有处理中的请求
+            current_time = int(time.time())
             for key_id, data in redis_manager.scan_inputs():
                 if data and data.get("status") == "processing":
-                    if int(time.time()) - data.get("created_at", 0) > 60:
+                    if current_time - data.get("created_at", 0) > 60:
                         # 超时处理
-                        data["status"] = "timeout"
+                        data["status"] = "finished"
+                        data["response"] = "Request timeout. Please try again."
                         redis_manager.set_input(key_id, data)
                         request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
                         request_client.call({
@@ -41,8 +43,8 @@ def check_timeouts():
                             "silence": "yes"
                         })
             
-            # 清理超过10分钟的数据
-            redis_manager.cleanup_expired_data(600)
+            # 清理超过30分钟的数据
+            redis_manager.cleanup_expired_data(1800)
                 
         except Exception as e:
             print(f"Error in timeout checker: {str(e)}")
@@ -112,7 +114,7 @@ def chat():
     # 将用户输入与上下文结合
     full_input = f"{context}\n{text}" if context else text
 
-    # 生成随机16位字符串
+    # 生成随机8位字符串
     stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     
     # 检查是否是清空上下文的命令
@@ -122,11 +124,11 @@ def chat():
         request_client.call({
             "update_id": send_id,
             "update_mark": "no",
-            "text": "已清空上下文",
+            "text": "Operation Successful",
             "text_type": "md",
             "silence": "yes"
         })
-        return jsonify({"code": 200, "msg": "success", "data": None})
+        return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
     # 将输入存储到 Redis
     redis_manager.set_input(send_id, {
@@ -138,11 +140,12 @@ def chat():
         "version": version,
         "token": token,
         "dialog_id": dialog_id,
-        "status": "processing",
         "created_at": int(time.time()),
         "stream_key": stream_key,
         "api_key": api_key,
         "agency": agency,
+        "status": "processing",
+        "response": "",
     })
 
     # 通知 stream 地址
@@ -152,14 +155,14 @@ def chat():
     }, action='stream')
 
     # 返回成功响应
-    return jsonify({"code": 200, "msg": "success", "data": {"id": send_id, "key": stream_key}})
+    return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
 # 处理流式响应
 @app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
 def stream(msg_id, stream_key):
     if not stream_key:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: No stream key\n\n",
+            f"id: {msg_id}\nevent: error\ndata: No key\n\n",
             mimetype='text/event-stream'
         )
 
@@ -172,9 +175,12 @@ def stream(msg_id, stream_key):
         )
 
     # 获取对应的参数
-    model_type, model_name, context_key, full_input, request_client = (
-        data["model_type"], data["model_name"], data["context_key"], data["full_input"], Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
+    model_type, model_name, context_key, full_input = (
+        data["model_type"], data["model_name"], data["context_key"], data["full_input"]
     )
+
+    # 创建请求客户端
+    request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
 
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
@@ -278,11 +284,6 @@ def stream(msg_id, stream_key):
             data["response"] = full_response
             redis_manager.set_input(msg_id, data)
             redis_manager.set_context(context_key, f"{full_input}\n{full_response}")
-
-            # 清空 model、request_client 释放内存
-            data["model"] = None
-            data["request_client"] = None
-            redis_manager.set_input(msg_id, data)
 
             # 更新完整消息
             request_client.call({
