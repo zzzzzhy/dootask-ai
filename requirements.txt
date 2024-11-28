@@ -8,3 +8,4 @@ dashscope
 erniebot
 httpx[socks]
 requests>=2.31.0
+redis>=5.0.0

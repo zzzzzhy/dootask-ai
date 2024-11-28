@@ -1,7 +1,8 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from langchain_core.messages import HumanMessage
-from utils import get_model_instance
-from request import Request
+from helper.utils import get_model_instance
+from helper.request import Request
+from helper.redis import RedisManager
 import json
 import os
 import time
@@ -11,67 +12,49 @@ import threading
 
 app = Flask(__name__)
 
-# 用于存储上下文的字典
-CONTEXT_STORAGE = {}
-
-# 用于存数输入的字典
-INPUT_STORAGE = {}
-
 # 服务启动端口
 SERVER_PORT = int(os.environ.get('PORT', 5001))
 
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
+# 创建 RedisManager
+redis_manager = RedisManager()
+
 # 检查超时的线程函数
 def check_timeouts():
     while True:
         try:
-            current_time = int(time.time())
-            # 找出所有超过1分钟且状态为processing的请求
-            timeout_ids = [
-                msg_id for msg_id, data in INPUT_STORAGE.items()
-                if current_time - data["created_at"] > 60 and data["status"] == "processing"
-            ]
-            
-            # 处理超时的请求
-            for msg_id in timeout_ids:
-                try:
-                    INPUT_STORAGE[msg_id]["request_client"].call({
-                        "update_id": msg_id,
-                        "update_mark": "no",
-                        "text": "Request timeout. Please try again.",
-                        "text_type": "md",
-                        "silence": "yes"
-                    })
-                    INPUT_STORAGE[msg_id]["status"] = "finished"
-                    INPUT_STORAGE[msg_id]["response"] = "Request timeout. Please try again."
-                except Exception:
-                    pass  # 忽略单个请求的处理错误
+            # 使用 RedisManager 扫描所有处理中的请求
+            for key_id, data in redis_manager.scan_inputs():
+                if data and data.get("status") == "processing":
+                    if int(time.time()) - data.get("created_at", 0) > 60:
+                        # 超时处理
+                        data["status"] = "timeout"
+                        redis_manager.set_input(key_id, data)
+                        request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
+                        request_client.call({
+                            "update_id": key_id,
+                            "update_mark": "no",
+                            "text": "Request timeout. Please try again.",
+                            "text_type": "md",
+                            "silence": "yes"
+                        })
             
             # 清理超过10分钟的数据
-            expired_ids = [
-                msg_id for msg_id, data in INPUT_STORAGE.items()
-                if current_time - data["created_at"] > 600  # 10分钟 = 600秒
-            ]
-            for msg_id in expired_ids:
-                try:
-                    del INPUT_STORAGE[msg_id]
-                except Exception:
-                    pass  # 忽略删除错误
+            redis_manager.cleanup_expired_data(600)
                 
-        except Exception:
-            pass  # 忽略检查过程中的错误
-        
-        time.sleep(1)  # 每秒检查一次
+        except Exception as e:
+            print(f"Error in timeout checker: {str(e)}")
+        time.sleep(1)
 
 # 启动超时检查线程
 threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
 
 # 处理聊天请求
-@app.route('/chat', methods=['GET'])
+@app.route('/chat', methods=['POST'])
 def chat():
-    # 优先从 header 获取配置，如果不存在则从 GET 参数获取
+    # 优先从 header 获取配置，如果不存在则从 POST 参数获取
     text = request.args.get('text') or request.form.get('text')
     token = request.args.get('token') or request.form.get('token')
     dialog_id = int(request.args.get('dialog_id') or request.form.get('dialog_id') or 0)
@@ -128,17 +111,16 @@ def chat():
     
     # 检查是否是清空上下文的命令
     if text in CLEAR_COMMANDS:
-        if context_key in CONTEXT_STORAGE:
-            del CONTEXT_STORAGE[context_key]
+        redis_manager.delete_context(context_key)
         # 调用回调
         request_client.call({
             "update_id": send_id,
             "update_mark": "no",
-            "text": "Operation Successful",
+            "text": "已清空上下文",
             "text_type": "md",
             "silence": "yes"
         })
-        return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
+        return jsonify({"code": 0, "msg": "success", "data": None})
 
     # 设置代理
     if agency:
@@ -165,26 +147,28 @@ def chat():
         os.environ.pop('HTTP_PROXY', None)
         os.environ.pop('HTTPS_PROXY', None)
 
-    # 从上下文存储中获取上下文
-    context = CONTEXT_STORAGE.get(context_key, "") if context_key else ""
+    # 从 Redis 获取上下文
+    context = redis_manager.get_context(context_key)
 
     # 将用户输入与上下文结合
     full_input = f"{context}\n{text}" if context else text
 
-    # 将输入存储到 INPUT_STORAGE
-    INPUT_STORAGE[send_id] = {
+    # 将输入存储到 Redis
+    redis_manager.set_input(send_id, {
         "model": model,
         "model_type": model_type,
         "model_name": model_name,
         "context_key": context_key,
         "full_input": full_input,
         "request_client": request_client,
-        
+        "server_url": server_url,
+        "version": version,
+        "token": token,
+        "dialog_id": dialog_id,
         "status": "processing",
         "created_at": int(time.time()),
         "stream_key": stream_key,
-        "response": ""
-    }
+    })
 
     # 通知 stream 地址
     request_client.call({
@@ -193,29 +177,29 @@ def chat():
     }, action='stream')
 
     # 返回成功响应
-    return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
+    return jsonify({"code": 0, "msg": "success", "data": {"id": send_id, "key": stream_key}})
 
 # 处理流式响应
-@app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
-def stream(msg_id, stream_key):
-    # 将 msg_id 转换为整数类型
-    try:
-        msg_id = int(msg_id)
-    except ValueError:
+@app.route('/stream', methods=['GET'])
+def stream():
+    msg_id = request.args.get('msg_id', '')
+    stream_key = request.args.get('stream_key', '')
+
+    if not stream_key:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: Invalid ID format\n\n",
+            f"id: {msg_id}\nevent: error\ndata: No stream key\n\n",
             mimetype='text/event-stream'
         )
 
-    # 检查 msg_id 是否在 INPUT_STORAGE 中
-    if msg_id not in INPUT_STORAGE:
+    # 检查 msg_id 是否在 Redis 中
+    data = redis_manager.get_input(msg_id)
+    if not data:
         return Response(
             f"id: {msg_id}\nevent: error\ndata: No such ID\n\n",
             mimetype='text/event-stream'
         )
 
     # 获取对应的参数
-    data = INPUT_STORAGE[msg_id]
     model, model_type, model_name, context_key, full_input, request_client = (
         data["model"], data["model_type"], data["model_name"], data["context_key"], data["full_input"], data["request_client"]
     )
@@ -310,13 +294,15 @@ def stream(msg_id, stream_key):
                         yield f"id: {msg_id}\nevent: append\ndata: {content}\n\n"
 
             # 更新状态、上下文
-            INPUT_STORAGE[msg_id]["status"] = "finished"
-            INPUT_STORAGE[msg_id]["response"] = full_response
-            CONTEXT_STORAGE[context_key] = f"{full_input}\n{full_response}"
+            data["status"] = "finished"
+            data["response"] = full_response
+            redis_manager.set_input(msg_id, data)
+            redis_manager.set_context(context_key, f"{full_input}\n{full_response}")
 
             # 清空 model、request_client 释放内存
-            INPUT_STORAGE[msg_id]["model"] = None
-            INPUT_STORAGE[msg_id]["request_client"] = None
+            data["model"] = None
+            data["request_client"] = None
+            redis_manager.set_input(msg_id, data)
 
             # 更新完整消息
             request_client.call({
@@ -335,6 +321,17 @@ def stream(msg_id, stream_key):
         stream_with_context(generate()),
         mimetype='text/event-stream'
     )
+
+# 健康检查
+@app.route('/health')
+def health_check():
+    try:
+        # 检查 Redis 连接
+        redis_manager = RedisManager()
+        redis_manager.redis_client.ping()
+        return jsonify({"status": "healthy", "redis": "connected"}), 200
+    except Exception as e:
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
 # 读取 swagger.yaml 文件
 @app.route('/swagger.yaml')

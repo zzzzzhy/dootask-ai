@@ -37,19 +37,20 @@ COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
 ENV PORT=5001 \
     WORKERS=4 \
     TIMEOUT=120 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    REDIS_HOST=redis \
+    REDIS_PORT=6379
 
 # 复制项目文件
 COPY main.py .
-COPY request.py .
-COPY utils.py .
+COPY helper/ helper/
 COPY static/ static/
 COPY requirements.txt .
 COPY README.md .
 COPY LICENSE .
 
 # 创建非 root 用户
-RUN groupadd -r appuser && useradd -r -g appuser appuser && \
+RUN useradd -m -u 1000 appuser && \
     chown -R appuser:appuser /app
 
 USER appuser
