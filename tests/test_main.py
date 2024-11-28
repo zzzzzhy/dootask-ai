@@ -17,4 +17,4 @@ def test_health_check(client):
 
 def test_redis_connection():
     redis_manager = RedisManager()
-    assert redis_manager.redis_client.ping() == True
+    assert redis_manager.client.ping() == True
