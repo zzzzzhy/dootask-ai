@@ -48,6 +48,7 @@ def chat():
         extras_json = json.loads(extras)
         model_type = extras_json.get('model_type', 'openai')
         model_name = extras_json.get('model_name', 'gpt-3.5-turbo')
+        system_message = extras_json.get('system_message')
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
@@ -74,19 +75,10 @@ def chat():
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
 
-    # 定义上下文键
+    # 获取或初始化上下文
     context_key = f"{dialog_id}_{msg_uid}"
-
-    # 从 Redis 获取上下文
-    context = redis_manager.get_context(context_key)
-
-    # 将用户输入与上下文结合
-    full_input = f"{context}\n{text}" if context else text
-
-    # 生成随机8位字符串
-    stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
     
-    # 检查是否是清空上下文的命令
+    # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
         redis_manager.delete_context(context_key)
         # 调用回调
@@ -97,22 +89,28 @@ def chat():
             "text_type": "md",
             "silence": "yes"
         })
-        return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
+        return jsonify({"code": 200, "data": {"id": send_id, "key": ""}})
 
+    # 生成随机8位字符串
+    stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
+    
     # 将输入存储到 Redis
     redis_manager.set_input(send_id, {
-        "model_type": model_type,
-        "model_name": model_name,
-        "context_key": context_key,
-        "full_input": full_input,
-        "server_url": server_url,
-        "version": version,
+        "text": text,
         "token": token,
         "dialog_id": dialog_id,
-        "created_at": int(time.time()),
-        "stream_key": stream_key,
+        "version": version,
+    
+        "model_type": model_type,
+        "model_name": model_name,
+        "system_message": system_message,
+        "server_url": server_url,
         "api_key": api_key,
         "agency": agency,
+
+        "context_key": context_key,
+        "stream_key": stream_key,
+        "created_at": int(time.time()),
         "status": "processing",
         "response": "",
     })
@@ -143,11 +141,6 @@ def stream(msg_id, stream_key):
             mimetype='text/event-stream'
         )
 
-    # 获取对应的参数
-    model_type, model_name, context_key, full_input = (
-        data["model_type"], data["model_name"], data["context_key"], data["full_input"]
-    )
-
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
         return Response(
@@ -162,57 +155,64 @@ def stream(msg_id, stream_key):
             mimetype='text/event-stream'
         )
 
-    # 获取对应的模型实例
-    model = get_model_instance(
-        model_type=model_type,
-        model_name=model_name,
-        api_key=data["api_key"],
-        agency=data.get("agency")
-    )
-
-    # 创建请求客户端
-    request_client = Request(
-        server_url=data["server_url"], 
-        version=data["version"], 
-        token=data["token"], 
-        dialog_id=data["dialog_id"]
-    )
-
     # 使用统一的 LangChain 接口处理流式响应
     def generate():
-        full_response = ""
+        response = ""
         try:
-            for chunk in model.stream([HumanMessage(content=full_input)]):
+            # 获取对应的模型实例
+            model = get_model_instance(
+                model_type=data["model_type"],
+                model_name=data["model_name"],
+                api_key=data["api_key"],
+                agency=data["agency"]
+            )
+
+            # 获取上下文
+            context = redis_manager.get_context(data["context_key"])
+
+            # 添加系统消息到上下文开始
+            if data["system_message"]:
+                context.insert(0, ("system", data["system_message"]))
+
+            # 添加用户的新消息
+            context.append(("human", data["text"]))
+            
+            # 开始请求流式响应
+            for chunk in model.stream(context):
                 if chunk.content:
-                    full_response += chunk.content
+                    response += chunk.content
                     yield f"id: {msg_id}\nevent: append\ndata: {chunk.content}\n\n"
 
-            # 保存响应并更新上下文
-            data["status"] = "finished"
-            data["response"] = full_response
-            redis_manager.set_input(msg_id, data)
-            redis_manager.set_context(context_key, f"{full_input}\n{full_response}", model_type, model_name)
-
-            # 更新完整消息
-            request_client.call({
-                "update_id": msg_id,
-                "update_mark": "no",
-                "text": full_response,
-                "text_type": "md",
-                "silence": "yes"
-            })
+            # 更新上下文
+            redis_manager.extend_contexts(data["context_key"], [
+                ("human", data["text"]),
+                ("assistant", response)
+            ], data["model_type"], data["model_name"])
         except Exception as e:
             # 处理异常
-            data["status"] = "finished"
-            data["response"] = str(e)
-            redis_manager.set_input(msg_id, data)
-            request_client.call({
-                "update_id": msg_id,
-                "update_mark": "no",
-                "text": str(e),
-                "text_type": "md",
-                "silence": "yes"
-            })
+            response = str(e)
+
+        # 更新数据状态
+        data["status"] = "finished"
+        data["response"] = response
+        redis_manager.set_input(msg_id, data)
+        
+        # 创建请求客户端
+        request_client = Request(
+            server_url=data["server_url"], 
+            version=data["version"], 
+            token=data["token"], 
+            dialog_id=data["dialog_id"]
+        )
+
+        # 更新完整消息
+        request_client.call({
+            "update_id": msg_id,
+            "update_mark": "no",
+            "text": response,
+            "text_type": "md",
+            "silence": "yes"
+        })
 
     # 返回流式响应
     return Response(

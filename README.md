@@ -138,6 +138,7 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
 - `extras`: 额外参数（JSON字符串）
   - `model_type`: 模型类型
   - `model_name`: 模型名称
+  - `system_message`: 系统提示词（可选）
   - `server_url`: 服务器地址
   - `api_key`: API密钥
   - `agency`: 代理服务器（可选）
