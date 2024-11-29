@@ -33,8 +33,8 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
     }
 
     if agency:
-        os.environ["HTTPS_PROXY"] = agency
-        os.environ["HTTP_PROXY"] = agency
+        os.environ["https_proxy"] = agency
+        os.environ["http_proxy"] = agency
 
     try:
         model_class, config = model_configs.get(model_type, (None, None))
@@ -60,8 +60,8 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
         raise RuntimeError(f"Failed to create model instance: {str(e)}")
     finally:
         if agency:
-            os.environ.pop("HTTPS_PROXY", None)
-            os.environ.pop("HTTP_PROXY", None)
+            os.environ.pop("https_proxy", None)
+            os.environ.pop("http_proxy", None)
 
 def check_timeouts():
     redis_manager = RedisManager()
