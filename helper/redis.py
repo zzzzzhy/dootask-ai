@@ -78,7 +78,10 @@ class RedisManager:
     def get_context(self, key):
         """从 Redis 获取上下文"""
         data = self.client.get(self._make_key("context", key))
-        return json.loads(data) if data else []
+        if data:
+            context = json.loads(data)
+            return context if isinstance(context, list) else []
+        return []
 
     def set_context(self, key, value, model_type=None, model_name=None):
         """设置上下文到 Redis，根据模型限制截断内容"""
