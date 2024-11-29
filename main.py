@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
-from helper.utils import get_model_instance, check_timeouts
+from helper.utils import get_model_instance, check_timeouts, get_swagger_ui
 from helper.request import Request
 from helper.redis import RedisManager
 import json
@@ -283,9 +283,14 @@ def health():
     except Exception as e:
         return jsonify({"status": "unhealthy", "error": str(e)}), 500
 
-# 读取 swagger.yaml 文件
-@app.route('/swagger.yaml')
+# Swagger UI route
+@app.route('/swagger')
 def swagger():
+    return get_swagger_ui()
+
+# Swagger YAML route
+@app.route('/swagger.yaml')
+def swagger_yaml():
     return app.send_static_file('swagger.yaml')
 
 if __name__ == '__main__':

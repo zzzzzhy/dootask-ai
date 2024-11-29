@@ -87,3 +87,33 @@ def check_timeouts():
         except Exception as e:
             print(f"Error in timeout checker: {str(e)}")
         time.sleep(1)
+
+def get_swagger_ui():
+    """Return the Swagger UI HTML content."""
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Swagger UI</title>
+        <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui.min.css" />
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.1.0/swagger-ui-bundle.js"></script>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script>
+            window.onload = function() {
+                SwaggerUIBundle({
+                    url: "/swagger.yaml",
+                    dom_id: '#swagger-ui',
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIBundle.SwaggerUIStandalonePreset
+                    ],
+                    layout: "BaseLayout"
+                });
+            }
+        </script>
+    </body>
+    </html>
+    """

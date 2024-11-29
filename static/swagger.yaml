@@ -287,20 +287,6 @@ paths:
                 event: replace
                 data: Here's the complete response...
 
-  /swagger.yaml:
-    get:
-      tags:
-        - Documentation
-      summary: Get OpenAPI specification
-      description: Returns the OpenAPI/Swagger specification file
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/yaml:
-              schema:
-                type: string
-
 components:
   schemas: {}
   securitySchemes: {}
