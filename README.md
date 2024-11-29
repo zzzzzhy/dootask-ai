@@ -122,7 +122,11 @@ Redis 默认连接到 localhost:6379，可通过环境变量 REDIS_HOST 和 REDI
 
 ## API 使用
 
-### 发起对话
+### 对话模式
+
+对话模式支持上下文对话，通过 `/chat` 接口发送消息，然后通过 `/stream/{msg_id}/{stream_key}` 接口获取流式响应。
+
+#### 发起对话
 
 ```http
 GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0&extras={"model_type":"openai","model_name":"gpt-3.5-turbo","server_url":"https://api.example.com","api_key":"your-api-key"}
@@ -143,23 +147,46 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
   - `api_key`: API密钥
   - `agency`: 代理服务器（可选）
 
-### 获取响应流
+#### 获取响应流
 
 ```http
 GET /stream/{msg_id}/{stream_key}
 ```
 
-响应格式（SSE）：
-```
-id: {msg_id}
-event: append/replace/error
-data: {content}
+参数说明：
+- `msg_id`: 消息ID
+- `stream_key`: 流密钥
+
+### 直接调用模式
+
+直接调用模式不保存上下文，适合单次问答场景。通过 `/invoke` 接口直接获取 AI 响应。
+
+```http
+GET /invoke?text=hello&model_type=openai&model_name=gpt-4&api_key=your-api-key&system_message=optional-system-message&agency=optional-proxy
 ```
 
-事件类型：
-- `append`: 追加新内容
-- `replace`: 替换全部内容
-- `error`: 错误信息
+参数说明：
+- `text`: 对话内容（必需）
+- `api_key`: API密钥（必需）
+- `model_type`: 模型类型（可选，默认为 openai）
+- `model_name`: 模型名称（可选，默认为 gpt-3.5-turbo）
+- `system_message`: 系统提示词（可选）
+- `agency`: 代理服务器（可选）
+
+响应格式：
+```json
+{
+    "code": 200,
+    "data": {
+        "content": "AI 的回复内容",
+        "usage": {
+            "total_tokens": 总token数,
+            "prompt_tokens": 输入token数,
+            "completion_tokens": 输出token数
+        }
+    }
+}
+```
 
 ## 开发说明
 

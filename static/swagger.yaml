@@ -1,22 +1,127 @@
 openapi: 3.0.0
 info:
   title: DooTask AI API
-  description: API documentation for DooTask AI service
   version: 1.0.0
-  contact:
-    email: your-email@example.com
+  description: DooTask AI API documentation
+
+tags:
+  - name: Chat
+    description: Chat related endpoints with context support
+  - name: Direct Invoke
+    description: Direct invoke endpoint without context
 
 servers:
   - url: http://localhost:5001
     description: Local development server
 
 paths:
+  /invoke:
+    get:
+      tags:
+        - Direct Invoke
+      summary: Direct invoke endpoint
+      description: Directly invoke AI model without chat context
+      parameters:
+        - name: text
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Message text
+        - name: api_key
+          in: query
+          required: true
+          schema:
+            type: string
+          description: API key for authentication
+        - name: model_type
+          in: query
+          required: false
+          schema:
+            type: string
+            default: openai
+          description: AI model type (openai, claude, gemini, etc.)
+        - name: model_name
+          in: query
+          required: false
+          schema:
+            type: string
+            default: gpt-3.5-turbo
+          description: Model name (e.g., gpt-3.5-turbo)
+        - name: system_message
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional system prompt to set AI behavior
+        - name: agency
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional proxy server URL
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 200
+                  data:
+                    type: object
+                    properties:
+                      content:
+                        type: string
+                        description: AI response content
+                      usage:
+                        type: object
+                        properties:
+                          total_tokens:
+                            type: integer
+                            description: Total number of tokens used
+                          prompt_tokens:
+                            type: integer
+                            description: Number of tokens in the prompt
+                          completion_tokens:
+                            type: integer
+                            description: Number of tokens in the completion
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 400
+                  error:
+                    type: string
+                    example: Parameter error
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: integer
+                    example: 500
+                  error:
+                    type: string
+                    example: Internal server error
+
   /chat:
     get:
       tags:
         - Chat
-      summary: Chat endpoint
-      description: Process chat messages and return responses
+      summary: Start a chat conversation
+      description: Send a message to start or continue a chat conversation
       parameters:
         - name: text
           in: query
@@ -145,14 +250,9 @@ paths:
   /stream/{msg_id}/{stream_key}:
     get:
       tags:
-        - Stream
-      summary: Stream endpoint
-      description: |
-        Stream responses for a given message ID. The response is sent as Server-Sent Events (SSE).
-        Events:
-          - append: Append new content to the response
-          - replace: Replace entire response content
-          - error: Error occurred during processing
+        - Chat
+      summary: Get streaming response
+      description: Get streaming response for a chat message
       parameters:
         - name: msg_id
           in: path
