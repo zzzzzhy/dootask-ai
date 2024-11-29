@@ -16,35 +16,57 @@ CONTEXT_LIMITS = {
         "default": 12000               # 默认限制
     },
     "claude": {
-        "claude-3-opus-20240229": 200000,   # 约 200k tokens
-        "claude-3-sonnet-20240229": 200000, # 约 200k tokens
-        "claude-2.1": 100000,              # 约 100k tokens
-        "claude-2.0": 100000,              # 约 100k tokens
-        "default": 100000                  # 默认限制
+        "claude-3-5-sonnet-latest": 200000,    # 约 200k tokens
+        "claude-3-5-sonnet-20241022": 200000,  # 约 200k tokens
+        "claude-3-5-haiku-latest": 200000,     # 约 200k tokens
+        "claude-3-5-haiku-20241022": 200000,   # 约 200k tokens
+        "claude-3-opus-latest": 200000,        # 约 200k tokens
+        "claude-3-opus-20240229": 200000,      # 约 200k tokens
+        "claude-3-haiku-20240307": 200000,     # 约 200k tokens
+        "claude-2.1": 100000,                  # 约 100k tokens
+        "claude-2.0": 100000,                  # 约 100k tokens
+        "default": 100000                      # 默认限制
     },
     "gemini": {
-        "gemini-pro": 100000,         # 约 100k tokens
-        "gemini-pro-vision": 100000,  # 约 100k tokens
+        "gemini-1.5-flash": 100000,       # 约 100k tokens
+        "gemini-1.5-flash-8b": 100000,    # 约 100k tokens
+        "gemini-1.5-pro": 100000,         # 约 100k tokens
+        "gemini-1.0-pro": 100000,         # 约 100k tokens
         "default": 100000
     },
     "zhipu": {
-        "glm-4": 128000,       # 约 32k tokens
-        "glm-4v": 128000,      # 约 32k tokens
-        "glm-3-turbo": 32000,  # 约 8k tokens
+        "glm-4": 128000,           # 约 32k tokens
+        "glm-4-plus": 128000,      # 约 32k tokens
+        "glm-4-air": 128000,       # 约 32k tokens
+        "glm-4-airx": 128000,      # 约 32k tokens
+        "glm-4-long": 512000,      # 约 128k tokens
+        "glm-4-flash": 128000,     # 约 32k tokens
+        "glm-4v": 128000,          # 约 32k tokens
+        "glm-4v-plus": 128000,     # 约 32k tokens
+        "glm-3-turbo": 32000,      # 约 8k tokens
         "default": 32000
     },
     "qwen": {
-        "qwen-turbo": 32000,           # 约 8k tokens
-        "qwen-plus": 32000,            # 约 8k tokens
-        "qwen-max": 32000,             # 约 8k tokens
-        "qwen-max-longcontext": 128000, # 约 32k tokens
+        "qwen-turbo": 32000,            # 约 8k tokens
+        "qwen-turbo-latest": 32000,     # 约 8k tokens
+        "qwen-plus": 32000,             # 约 8k tokens
+        "qwen-plus-latest": 32000,      # 约 8k tokens
+        "qwen-max": 32000,              # 约 8k tokens
+        "qwen-max-latest": 32000,       # 约 8k tokens
+        "qwen-long": 128000,            # 约 32k tokens
         "default": 32000
     },
     "wenxin": {
-        "ernie-bot-4": 32000,    # 约 8k tokens
-        "ernie-bot-8k": 32000,   # 约 8k tokens
-        "ernie-bot-turbo": 32000,# 约 8k tokens
-        "ernie-bot": 32000,      # 约 8k tokens
+        "ernie-4.0-8k": 32000,           # 约 8k tokens
+        "ernie-4.0-8k-latest": 32000,    # 约 8k tokens
+        "ernie-4.0-turbo-128k": 512000,  # 约 128k tokens
+        "ernie-4.0-turbo-8k": 32000,     # 约 8k tokens
+        "ernie-3.5-128k": 512000,        # 约 128k tokens
+        "ernie-3.5-8k": 32000,           # 约 8k tokens
+        "ernie-speed-128k": 512000,      # 约 128k tokens
+        "ernie-speed-8k": 32000,         # 约 8k tokens
+        "ernie-lite-8k": 32000,          # 约 8k tokens
+        "ernie-tiny-8k": 32000,          # 约 8k tokens
         "default": 32000
     },
     "cohere": {
@@ -83,7 +105,7 @@ class RedisManager:
             return context if isinstance(context, list) else []
         return []
 
-    def set_context(self, key, value, model_type=None, model_name=None):
+    def set_context(self, key, value, model_type=None, model_name=None, context_limit=None):
         """设置上下文到 Redis，根据模型限制截断内容"""
         # 确保 value 是列表格式
         if not isinstance(value, list):
@@ -93,10 +115,13 @@ class RedisManager:
         total_length = sum(len(msg[1]) for msg in value)
 
         # 获取模型的上下文限制
-        limit = CONTEXT_LIMITS.get("default")
-        if model_type:
-            model_limits = CONTEXT_LIMITS.get(model_type, {})
-            limit = model_limits.get(model_name, model_limits.get("default", limit))
+        if context_limit and context_limit > 0:
+            limit = context_limit
+        else:
+            limit = CONTEXT_LIMITS.get("default")
+            if model_type:
+                model_limits = CONTEXT_LIMITS.get(model_type, {})
+                limit = model_limits.get(model_name, model_limits.get("default", limit))
 
         # 如果内容超过限制，从开头移除消息直到满足限制
         while total_length > limit and len(value) > 1:
@@ -106,17 +131,17 @@ class RedisManager:
         # 保存到 Redis
         self.client.set(self._make_key("context", key), json.dumps(value))
 
-    def append_context(self, key, role, content, model_type=None, model_name=None):
+    def append_context(self, key, role, content, model_type=None, model_name=None, context_limit=None):
         """添加新的上下文消息"""
         context = self.get_context(key)
         context.append((role, content))
-        self.set_context(key, context, model_type, model_name)
+        self.set_context(key, context, model_type, model_name, context_limit)
 
-    def extend_contexts(self, key, contents, model_type=None, model_name=None):
+    def extend_contexts(self, key, contents, model_type=None, model_name=None, context_limit=None):
         """添加新的上下文消息"""
         context = self.get_context(key)
         context.extend(contents)
-        self.set_context(key, context, model_type, model_name)
+        self.set_context(key, context, model_type, model_name, context_limit)
 
     def delete_context(self, key):
         """删除上下文"""

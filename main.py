@@ -51,6 +51,7 @@ def chat():
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
+        context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
         return jsonify({"code": 400, "error": "Invalid extras parameter"})
 
@@ -106,6 +107,7 @@ def chat():
         "server_url": server_url,
         "api_key": api_key,
         "agency": agency,
+        "context_limit": context_limit,
 
         "context_key": context_key,
         "stream_key": stream_key,
@@ -186,7 +188,7 @@ def stream(msg_id, stream_key):
             redis_manager.extend_contexts(data["context_key"], [
                 ("human", data["text"]),
                 ("assistant", response)
-            ], data["model_type"], data["model_name"])
+            ], data["model_type"], data["model_name"], data["context_limit"])
             
         except Exception as e:
             # 处理异常
@@ -231,6 +233,8 @@ def invoke():
     system_message = request.args.get('system_message') or request.form.get('system_message')
     api_key = request.args.get('api_key') or request.form.get('api_key')
     agency = request.args.get('agency') or request.form.get('agency')
+    context_key = request.args.get('context_key') or request.form.get('context_key')
+    context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
     
     # 检查必要参数是否为空
     if not all([text, api_key]):
@@ -246,11 +250,14 @@ def invoke():
     )
 
     # 初始化上下文
-    context = []
+    if context_key:
+        context = redis_manager.get_context(f"invoke_{context_key}")
+    else:
+        context = []
 
     # 添加系统消息到上下文
     if system_message:
-        context.append(("system", system_message))
+        context.insert(0, ("system", system_message))
 
     # 添加用户的新消息
     context.append(("human", text))
@@ -258,6 +265,11 @@ def invoke():
     # 开始请求直接响应
     try:
         response = model.invoke(context)
+        if context_key:
+            redis_manager.extend_contexts(f"invoke_{context_key}", [
+                ("human", text),
+                ("assistant", response.content)
+            ], model_type, model_name, context_limit)
         return jsonify({
             "code": 200, 
             "data": {

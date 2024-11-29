@@ -60,6 +60,18 @@ paths:
           schema:
             type: string
           description: Optional proxy server URL
+        - name: context_key
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Context key for context support
+        - name: context_limit
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Optional context limit (in tokens, e.g., 32000)
       responses:
         '200':
           description: Successful response
@@ -191,7 +203,7 @@ paths:
           schema:
             type: string
             format: json
-            example: '{"model_type":"openai","model_name":"gpt-3.5-turbo","system_message":"You are a helpful assistant","server_url":"https://api.example.com","api_key":"your-api-key","agency":"optional-agency"}'
+            example: '{"model_type":"openai","model_name":"gpt-3.5-turbo","system_message":"You are a helpful assistant","server_url":"https://api.example.com","api_key":"your-api-key","agency":"optional-agency","context_limit":32000}'
           description: |
             JSON string containing additional parameters:
             - model_type: AI model type (openai, claude, gemini, etc.)
@@ -200,6 +212,7 @@ paths:
             - server_url: Server URL for API calls (required)
             - api_key: API key for authentication (required)
             - agency: Optional proxy server URL
+            - context_limit: Optional context limit (in tokens, e.g., 32000)
       responses:
         '200':
           description: Successful response
