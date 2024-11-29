@@ -13,7 +13,7 @@ import requests
 import os
 import time
 
-def get_model_instance(model_type, model_name, api_key, agency=None):
+def get_model_instance(model_type, model_name, api_key, agency=None, streaming=True):
     """根据模型类型返回对应的模型实例"""
 
     model_configs = {
@@ -52,7 +52,7 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
         common_params = {
             "model": model_name,
             "temperature": 0.7,
-            "streaming": True
+            "streaming": streaming
         }
         config.update(common_params)
         return model_class(**config)

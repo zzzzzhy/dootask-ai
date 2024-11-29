@@ -117,7 +117,7 @@ def chat():
     # 通知 stream 地址
     request_client.call({
         "userid": msg_uid,
-        "stream_url": f"/ai/stream/{send_id}/{stream_key}",
+        "stream_url": f"/stream/{send_id}/{stream_key}",
     }, action='stream')
 
     # 返回成功响应
@@ -221,9 +221,60 @@ def stream(msg_id, stream_key):
         mimetype='text/event-stream'
     )
 
+# 处理直接请求
+@app.route('/invoke', methods=['POST', 'GET'])
+def invoke():
+    # 优先从 header 获取配置，如果不存在则从 POST 参数获取
+    text = request.args.get('text') or request.form.get('text')
+    model_type = request.args.get('model_type') or request.form.get('model_type') or 'openai'
+    model_name = request.args.get('model_name') or request.form.get('model_name') or 'gpt-3.5-turbo'
+    system_message = request.args.get('system_message') or request.form.get('system_message')
+    api_key = request.args.get('api_key') or request.form.get('api_key')
+    agency = request.args.get('agency') or request.form.get('agency')
+    
+    # 检查必要参数是否为空
+    if not all([text, api_key]):
+        return jsonify({"code": 400, "error": "Parameter error"})
+
+    # 获取模型实例
+    model = get_model_instance(
+        model_type=model_type,
+        model_name=model_name,
+        api_key=api_key,
+        agency=agency,
+        streaming=False,
+    )
+
+    # 初始化上下文
+    context = []
+
+    # 添加系统消息到上下文
+    if system_message:
+        context.append(("system", system_message))
+
+    # 添加用户的新消息
+    context.append(("human", text))
+
+    # 开始请求直接响应
+    try:
+        response = model.invoke(context)
+        return jsonify({
+            "code": 200, 
+            "data": {
+                "content": response.content,
+                "usage": {
+                    "total_tokens": response.usage_metadata.get("total_tokens", 0),
+                    "prompt_tokens": response.usage_metadata.get("input_tokens", 0),
+                    "completion_tokens": response.usage_metadata.get("output_tokens", 0)
+                }
+            }
+        })
+    except Exception as e:
+        return jsonify({"code": 500, "error": str(e)})
+
 # 健康检查
 @app.route('/health')
-def health_check():
+def health():
     try:
         # 检查 Redis 连接
         redis_manager = RedisManager()
