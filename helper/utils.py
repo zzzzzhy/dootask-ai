@@ -4,7 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_models import (
     ChatZhipuAI,
     ChatTongyi,
-    ErnieBotChat,
+    QianfanChatEndpoint,
     ChatCohere
 )
 from .request import Request
@@ -19,19 +19,16 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
     model_configs = {
         "openai": (ChatOpenAI, {
             "openai_api_key": api_key,
-            "openai_proxy": agency if agency else None,
         }),
         "claude": (ChatAnthropic, {
             "anthropic_api_key": api_key,
-            "anthropic_proxy": agency if agency else None,
         }),
         "gemini": (ChatGoogleGenerativeAI, {
             "google_api_key": api_key,
-            "google_proxy": agency if agency else None,
         }),
         "zhipu": (ChatZhipuAI, None),
         "qwen": (ChatTongyi, None),
-        "wenxin": (ErnieBotChat, None),
+        "wenxin": (QianfanChatEndpoint, None),
         "cohere": (ChatCohere, None),
     }
 
@@ -47,8 +44,10 @@ def get_model_instance(model_type, model_name, api_key, agency=None):
         if config is None:
             config = {
                 "api_key": api_key,
-                "proxy": agency if agency else None,
             }
+            if model_type == "wenxin":
+                api_key, secret_key = (api_key.split(':') + [None])[:2]
+                config.update({"api_key": api_key, "secret_key": secret_key})
 
         common_params = {
             "model": model_name,

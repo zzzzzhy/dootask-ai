@@ -188,9 +188,11 @@ def stream(msg_id, stream_key):
                 ("human", data["text"]),
                 ("assistant", response)
             ], data["model_type"], data["model_name"])
+            
         except Exception as e:
             # 处理异常
             response = str(e)
+            yield f"id: {msg_id}\nevent: replace\ndata: {response}\n\n"
 
         # 更新数据状态
         data["status"] = "finished"
