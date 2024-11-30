@@ -171,3 +171,18 @@ class RedisManager:
             data = self.get_input(key_id)
             if data:
                 yield key_id, data
+
+    def set_cache(self, key, value, **kwargs):
+        """设置临时缓存，支持超时"""
+        cache_key = self._make_key("cache", key)
+        return self.client.set(cache_key, value, **kwargs)
+
+    def get_cache(self, key):
+        """获取临时缓存的值"""
+        cache_key = self._make_key("cache", key)
+        return self.client.get(cache_key) or ""
+
+    def delete_cache(self, key):
+        """删除临时缓存"""
+        cache_key = self._make_key("cache", key)
+        return self.client.delete(cache_key)

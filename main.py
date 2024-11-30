@@ -161,9 +161,9 @@ def stream(msg_id, stream_key):
     # 使用统一的 LangChain 接口处理流式响应
     def generate():
         # 防止并发缓存
-        cache_key = f"stream_cache:{msg_id}"
+        cache_key = f"stream_{msg_id}"
         cache_timeout = 60
-        if not redis_manager.client.setnx(cache_key, ""):
+        if not redis_manager.set_cache(cache_key, "", ex=cache_timeout, nx=True):
             wait_start = time.time()
             last_response = ""
             while True:
@@ -171,9 +171,8 @@ def stream(msg_id, stream_key):
                     yield f"id: {msg_id}\nevent: replace\ndata: Request timeout\n\n"
                     yield f"id: {msg_id}\nevent: done\ndata: Timeout\n\n"
                     return
-                cached_response = redis_manager.client.get(cache_key)
-                if cached_response:
-                    response = cached_response.decode()
+                response = redis_manager.get_cache(cache_key)
+                if response:
                     if not response:
                         continue
                     if not last_response:
@@ -188,8 +187,7 @@ def stream(msg_id, stream_key):
                         yield f"id: {msg_id}\nevent: done\ndata: Finished\n\n"
                         return
                 time.sleep(0.1)
-        else:
-            redis_manager.client.expire(cache_key, cache_timeout)
+            return
 
         # 响应业务
         response = ""
@@ -216,7 +214,7 @@ def stream(msg_id, stream_key):
             for chunk in model.stream(context):
                 if chunk.content:
                     response += chunk.content
-                    redis_manager.client.set(cache_key, response)
+                    redis_manager.set_cache(cache_key, response)
                     yield f"id: {msg_id}\nevent: append\ndata: {chunk.content}\n\n"
 
             # 更新上下文
@@ -228,7 +226,7 @@ def stream(msg_id, stream_key):
         except Exception as e:
             # 处理异常
             response = str(e)
-            redis_manager.client.set(cache_key, response)
+            redis_manager.set_cache(cache_key, response)
             yield f"id: {msg_id}\nevent: replace\ndata: {response}\n\n"
 
         # 更新数据状态
@@ -237,7 +235,7 @@ def stream(msg_id, stream_key):
         redis_manager.set_input(msg_id, data)
 
         # 清理并发缓存
-        redis_manager.client.delete(cache_key)
+        redis_manager.delete_cache(cache_key)
 
         # 发送完成事件
         yield f"id: {msg_id}\nevent: done\ndata: Finished\n\n"
