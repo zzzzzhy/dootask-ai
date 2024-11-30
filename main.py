@@ -130,7 +130,7 @@ def chat():
 def stream(msg_id, stream_key):
     if not stream_key:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: No key\n\n",
+            f"id: {msg_id}\nevent: done\ndata: No key\n\n",
             mimetype='text/event-stream'
         )
 
@@ -138,21 +138,22 @@ def stream(msg_id, stream_key):
     data = redis_manager.get_input(msg_id)
     if not data:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: No such ID\n\n",
+            f"id: {msg_id}\nevent: done\ndata: No such ID\n\n",
             mimetype='text/event-stream'
         )
 
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
         return Response(
-            f"id: {msg_id}\nevent: error\ndata: Invalid key\n\n",
+            f"id: {msg_id}\nevent: done\ndata: Invalid key\n\n",
             mimetype='text/event-stream'
         )
 
     # 如果 status 为 finished，直接返回
     if data["status"] == "finished":
         return Response(
-            f"id: {msg_id}\nevent: replace\ndata: {data['response']}\n\n",
+            f"id: {msg_id}\nevent: replace\ndata: {data['response']}\n\n"
+            f"id: {msg_id}\nevent: done\ndata: Finished\n\n",
             mimetype='text/event-stream'
         )
 
@@ -199,6 +200,9 @@ def stream(msg_id, stream_key):
         data["status"] = "finished"
         data["response"] = response
         redis_manager.set_input(msg_id, data)
+
+        # 发送完成事件
+        yield f"id: {msg_id}\nevent: done\ndata: Finished\n\n"
         
         # 创建请求客户端
         request_client = Request(
