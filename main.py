@@ -17,6 +17,9 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
+# 流式响应超时时间
+STREAM_TIMEOUT = 300
+
 # 启动超时检查线程
 threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
 
@@ -112,7 +115,7 @@ def chat():
         "context_key": context_key,
         "stream_key": stream_key,
         "created_at": int(time.time()),
-        "status": "processing",
+        "status": "prepare",
         "response": "",
     })
 
@@ -160,6 +163,10 @@ def stream(msg_id, stream_key):
 
     # 使用统一的 LangChain 接口处理流式响应
     def stream_generate(msg_id, msg_key, data, redis_manager):
+        # 更新数据状态
+        data["status"] = "processing"
+        redis_manager.set_input(msg_id, data)
+
         response = ""
         try:
             # 获取对应的模型实例
@@ -184,7 +191,7 @@ def stream(msg_id, stream_key):
             for chunk in model.stream(context):
                 if chunk.content:
                     response += chunk.content
-                    redis_manager.set_cache(msg_key, response)
+                    redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
 
             # 更新上下文
             redis_manager.extend_contexts(data["context_key"], [
@@ -195,7 +202,7 @@ def stream(msg_id, stream_key):
         except Exception as e:
             # 处理异常
             response = str(e)
-            redis_manager.set_cache(msg_key, response)
+            redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
 
         # 更新数据状态
         data["status"] = "finished"
@@ -224,7 +231,7 @@ def stream(msg_id, stream_key):
         msg_key = f"stream_msg_{msg_id}"
         
         # 如果是第一个请求，启动异步生产者
-        if redis_manager.set_cache(msg_key, "", nx=True):
+        if redis_manager.set_cache(msg_key, "", ex=STREAM_TIMEOUT, nx=True):
             threading.Thread(
                 target=stream_generate,
                 args=(msg_id, msg_key, data, redis_manager),
@@ -233,12 +240,12 @@ def stream(msg_id, stream_key):
 
         # 所有请求都作为消费者处理
         wait_start = time.time()
-        wait_timeout = 300
         last_response = ""
         while True:
-            if time.time() - wait_start > wait_timeout:
+            if time.time() - wait_start > STREAM_TIMEOUT:
                 yield f"id: {msg_id}\nevent: replace\ndata: Request timeout\n\n"
                 yield f"id: {msg_id}\nevent: done\ndata: Timeout\n\n"
+                redis_manager.delete_cache(msg_key)
                 return
 
             response = redis_manager.get_cache(msg_key)
@@ -254,6 +261,7 @@ def stream(msg_id, stream_key):
                 current_data = redis_manager.get_input(msg_id)
                 if current_data and current_data["status"] == "finished":
                     yield f"id: {msg_id}\nevent: done\ndata: Finished\n\n"
+                    redis_manager.delete_cache(msg_key)
                     return
 
             time.sleep(0.1)

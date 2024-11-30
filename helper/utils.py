@@ -70,13 +70,18 @@ def check_timeouts():
             # 使用 RedisManager 扫描所有处理中的请求
             current_time = int(time.time())
             for key_id, data in redis_manager.scan_inputs():
-                if data and data.get("status") == "processing":
+                if data and data.get("status") == "prepare":
                     if current_time - data.get("created_at", 0) > 60:
                         # 超时处理
                         data["status"] = "finished"
                         data["response"] = "Request timeout. Please try again."
                         redis_manager.set_input(key_id, data)
-                        request_client = Request(data["server_url"], data["version"], data["token"], data["dialog_id"])
+                        request_client = Request(
+                            server_url=data["server_url"],
+                            version=data["version"],
+                            token=data["token"],
+                            dialog_id=data["dialog_id"]
+                        )
                         request_client.call({
                             "update_id": key_id,
                             "update_mark": "no",
