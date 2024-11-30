@@ -134,7 +134,7 @@ def chat():
 def stream(msg_id, stream_key):
     if not stream_key:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: {json_error("No key")}\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error('No key')}\n\n",
             mimetype='text/event-stream'
         )
 
@@ -142,14 +142,14 @@ def stream(msg_id, stream_key):
     data = redis_manager.get_input(msg_id)
     if not data:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: {json_error("No such ID")}\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error('No such ID')}\n\n",
             mimetype='text/event-stream'
         )
 
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: {json_error("Invalid key")}\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error('Invalid key')}\n\n",
             mimetype='text/event-stream'
         )
 
@@ -242,8 +242,8 @@ def stream(msg_id, stream_key):
         last_response = ""
         while True:
             if time.time() - wait_start > STREAM_TIMEOUT:
-                yield f"id: {msg_id}\nevent: replace\ndata: {json_content("Request timeout")}\n\n"
-                yield f"id: {msg_id}\nevent: done\ndata: {json_error("Timeout")}\n\n"
+                yield f"id: {msg_id}\nevent: replace\ndata: {json_content('Request timeout')}\n\n"
+                yield f"id: {msg_id}\nevent: done\ndata: {json_error('Timeout')}\n\n"
                 redis_manager.delete_cache(msg_key)
                 return
 
