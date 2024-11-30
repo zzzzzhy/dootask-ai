@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
-from helper.utils import get_model_instance, check_timeouts, get_swagger_ui
+from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content
 from helper.request import Request
 from helper.redis import RedisManager
 import json
@@ -134,7 +134,7 @@ def chat():
 def stream(msg_id, stream_key):
     if not stream_key:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: No key\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error("No key")}\n\n",
             mimetype='text/event-stream'
         )
 
@@ -142,26 +142,25 @@ def stream(msg_id, stream_key):
     data = redis_manager.get_input(msg_id)
     if not data:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: No such ID\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error("No such ID")}\n\n",
             mimetype='text/event-stream'
         )
 
     # 检查 stream_key 是否正确
     if stream_key != data["stream_key"]:
         return Response(
-            f"id: {msg_id}\nevent: done\ndata: Invalid key\n\n",
+            f"id: {msg_id}\nevent: done\ndata: {json_error("Invalid key")}\n\n",
             mimetype='text/event-stream'
         )
 
     # 如果 status 为 finished，直接返回
     if data["status"] == "finished":
         return Response(
-            f"id: {msg_id}\nevent: replace\ndata: {data['response']}\n\n"
-            f"id: {msg_id}\nevent: done\ndata: Finished\n\n",
+            f"id: {msg_id}\nevent: replace\ndata: {json_content(data['response'])}\n\n"
+            f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n",
             mimetype='text/event-stream'
         )
 
-    # 使用统一的 LangChain 接口处理流式响应
     def stream_generate(msg_id, msg_key, data, redis_manager):
         # 更新数据状态
         data["status"] = "processing"
@@ -243,24 +242,24 @@ def stream(msg_id, stream_key):
         last_response = ""
         while True:
             if time.time() - wait_start > STREAM_TIMEOUT:
-                yield f"id: {msg_id}\nevent: replace\ndata: Request timeout\n\n"
-                yield f"id: {msg_id}\nevent: done\ndata: Timeout\n\n"
+                yield f"id: {msg_id}\nevent: replace\ndata: {json_content("Request timeout")}\n\n"
+                yield f"id: {msg_id}\nevent: done\ndata: {json_error("Timeout")}\n\n"
                 redis_manager.delete_cache(msg_key)
                 return
 
             response = redis_manager.get_cache(msg_key)
             if response:
                 if not last_response:
-                    yield f"id: {msg_id}\nevent: replace\ndata: {response}\n\n"
+                    yield f"id: {msg_id}\nevent: replace\ndata: {json_content(response)}\n\n"
                 else:
                     append_response = response[len(last_response):]
                     if append_response:
-                        yield f"id: {msg_id}\nevent: append\ndata: {append_response}\n\n"
+                        yield f"id: {msg_id}\nevent: append\ndata: {json_content(append_response)}\n\n"
                 last_response = response
 
                 current_data = redis_manager.get_input(msg_id)
                 if current_data and current_data["status"] == "finished":
-                    yield f"id: {msg_id}\nevent: done\ndata: Finished\n\n"
+                    yield f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n"
                     redis_manager.delete_cache(msg_key)
                     return
 

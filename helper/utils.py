@@ -12,6 +12,7 @@ from .redis import RedisManager
 import requests
 import os
 import time
+import json
 
 def get_model_instance(model_type, model_name, api_key, agency=None, streaming=True):
     """根据模型类型返回对应的模型实例"""
@@ -122,3 +123,15 @@ def get_swagger_ui():
     </body>
     </html>
     """
+
+def json_content(content):
+    return json.dumps({"content": content}, ensure_ascii=False)
+
+def json_success(success):
+    return json.dumps({"success": success}, ensure_ascii=False)
+
+def json_error(error):
+    return json.dumps({"error": error}, ensure_ascii=False)
+
+def json_empty():
+    return json.dumps({})

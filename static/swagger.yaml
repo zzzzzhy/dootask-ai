@@ -294,11 +294,11 @@ paths:
               example: |
                 id: 123456
                 event: append
-                data: Hello, how can I help you?
+                data: {"content": "Hello, world!"}
 
                 id: 123456
                 event: replace
-                data: Here's the complete response...
+                data: {"content": "Here's the complete response..."}
 
 components:
   schemas: {}

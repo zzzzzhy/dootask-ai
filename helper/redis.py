@@ -154,9 +154,9 @@ class RedisManager:
         data = self.client.get(self._make_key("input", key))
         return json.loads(data) if data else None
 
-    def set_input(self, key, value, expire=600):
+    def set_input(self, key, value, expire=86400):
         """设置输入到 Redis"""
-        self.client.setex(self._make_key("input", key), expire, json.dumps(value))
+        self.client.set(self._make_key("input", key), json.dumps(value), ex=expire)
 
     def delete_input(self, key):
         """删除输入"""
