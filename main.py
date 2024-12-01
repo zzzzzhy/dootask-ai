@@ -2,6 +2,11 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content
 from helper.request import Request
 from helper.redis import RedisManager
+from helper.vector_store import VectorStoreManager
+from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from langchain.prompts import MessagesPlaceholder
+from langchain.prompts import ChatMessagePromptTemplate
+from langchain_core.documents import Document
 import json
 import os
 import time
@@ -40,7 +45,8 @@ def chat():
     bot_uid = int(request.args.get('bot_uid') or request.form.get('bot_uid') or 0)
     version = request.args.get('version') or request.form.get('version')
     extras = request.args.get('extras') or request.form.get('extras') or '{}'
-    
+    project = request.args.get('project') or request.form.get('project')  # Get project from extras
+    task_name = request.args.get('task_name') or request.form.get('task_name')
     # 检查必要参数是否为空
     if not all([text, token, dialog_id, msg_uid, bot_uid, version]):
         return jsonify({"code": 400, "error": "Parameter error"})
@@ -54,6 +60,7 @@ def chat():
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
+        qianfan_sk = extras_json.get('qianfan_sk')
         context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
         return jsonify({"code": 400, "error": "Invalid extras parameter"})
@@ -111,6 +118,9 @@ def chat():
         "api_key": api_key,
         "agency": agency,
         "context_limit": context_limit,
+        "project": project,  # Add project to redis data
+        "task_name": task_name,
+        "qianfan_sk": qianfan_sk,
 
         "context_key": context_key,
         "stream_key": stream_key,
@@ -165,7 +175,7 @@ def stream(msg_id, stream_key):
         # 更新数据状态
         data["status"] = "processing"
         redis_manager.set_input(msg_id, data)
-
+        task_name = data.get('task_name', None)
         response = ""
         try:
             # 获取对应的模型实例
@@ -178,16 +188,36 @@ def stream(msg_id, stream_key):
 
             # 获取上下文
             context = redis_manager.get_context(data["context_key"])
+            try:
+                # 初始化向量存储管理器并获取相关上下文
+                vector_store_manager = VectorStoreManager(
+                    project=data.get("project", "default"),
+                    embedding_api_key=data["api_key"],
+                    llm=data["model_type"],
+                    qianfan_sk=data.get("qianfan_sk"),
+                )
+                relevant_docs = vector_store_manager.similarity_search(data["text"],expr=f"'source == {task_name}'")
+                vector_context = "\n".join([doc.page_content for doc in relevant_docs]) if relevant_docs else ""
+            except ValueError as e:
+                print(e)  
 
-            # 添加系统消息到上下文开始
+            # 添加系统消息和向量上下文到上下文开始
             if data["system_message"]:
-                context.insert(0, ("system", data["system_message"]))
-
+                system_msg = data["system_message"] or ""
+                
+            prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", f"{system_msg}\n\nHere is some relevant context,The contents are in the <data> tag,<data>{vector_context}<data>"),
+                    MessagesPlaceholder(variable_name="redis_history"),
+                    ("human", """{question}""")
+                ]
+            )
+            chain = prompt | model
             # 添加用户的新消息
-            context.append(("human", data["text"]))
-            
+            # context.append(("human", data["text"]))
+            msg = prompt.format_prompt(redis_history=context,question=data["text"]).to_messages()
             # 开始请求流式响应
-            for chunk in model.stream(context):
+            for chunk in chain.stream(msg):
                 if chunk.content:
                     response += chunk.content
                     redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
@@ -283,7 +313,10 @@ def invoke():
     agency = request.args.get('agency') or request.form.get('agency')
     context_key = request.args.get('context_key') or request.form.get('context_key')
     context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
-    
+    project = request.args.get('project') or request.form.get('project')
+    task_name = request.args.get('task_name') or request.form.get('task_name')
+    qianfan_sk = request.args.get('qianfan_sk') or request.form.get('qianfan_sk')
+
     # 检查必要参数是否为空
     if not all([text, api_key]):
         return jsonify({"code": 400, "error": "Parameter error"})
@@ -302,17 +335,30 @@ def invoke():
         context = redis_manager.get_context(f"invoke_{context_key}")
     else:
         context = []
-
-    # 添加系统消息到上下文
-    if system_message:
-        context.insert(0, ("system", system_message))
-
-    # 添加用户的新消息
-    context.append(("human", text))
-
+    try:
+        # 初始化向量存储管理器并获取相关上下文
+        vector_store_manager = VectorStoreManager(
+            project=project,
+            embedding_api_key=api_key,
+            llm=model_type,
+            qianfan_sk=qianfan_sk,
+        )
+        relevant_docs = vector_store_manager.similarity_search(text,expr=f"'source == {task_name}'")
+        vector_context = "\n".join([doc.page_content for doc in relevant_docs]) if relevant_docs else ""
+    except Exception as e:
+        vector_context = ''
+    prompt = ChatPromptTemplate.from_messages(
+                [
+                    ("system", f"{system_message}\n\nHere is some relevant context,The contents are in the <data> tag,<data>{vector_context}<data>"),
+                    MessagesPlaceholder(variable_name="redis_history"),
+                    ("human", """{question}""")
+                ]
+            )
+    chain = prompt | model
+    msg = prompt.format_prompt(redis_history=context,question=text).to_messages()
     # 开始请求直接响应
     try:
-        response = model.invoke(context)
+        response = chain.invoke(msg)
         if context_key:
             redis_manager.extend_contexts(f"invoke_{context_key}", [
                 ("human", text),
@@ -331,6 +377,81 @@ def invoke():
         })
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)})
+    
+# 添加向量存储
+@app.route('/vectors', methods=['POST'])
+def add_vectors():
+    """添加向量存储接口
+    
+    POST body 格式:
+    {
+        "text": "文档内容",
+        "metadata": {"source": "任务名称", ...},
+        "project": "项目名称",
+        "model_type": "openai",
+        "api_key": "your-api-key",
+        "qianfan_sk": "your-sk"  # 可选
+    }
+    """
+    try:
+        # 获取 POST body
+        data = request.get_json()
+        if not data:
+            return jsonify({"code": 400, "error": "Missing request body"})
+            
+        # 获取必需参数
+        text = data.get('text')
+        metadata = data.get('metadata', {})
+        api_key = data.get('api_key')
+        
+        # 获取可选参数
+        project = data.get('project', 'default')
+        model_type = data.get('model_type', 'openai')
+        qianfan_sk = data.get('qianfan_sk')
+        
+        # 检查必需参数
+        if not all([text, api_key]):
+            return jsonify({"code": 400, "error": "Missing required parameters: text and api_key"})
+            
+        # 检查 source 是否存在于 metadata 中
+        if not metadata.get('source'):
+            return jsonify({"code": 400, "error": "metadata.source is required"})
+            
+        # 初始化向量存储管理器
+        vector_store_manager = VectorStoreManager(
+            project=project,
+            embedding_api_key=api_key,
+            llm=model_type,
+            qianfan_sk=qianfan_sk
+        )
+        
+        document = Document(
+            page_content=text,
+            metadata=metadata
+        )
+        
+        # 添加文档到向量存储
+        success = vector_store_manager.add_documents([document])
+        
+        if success:
+            return jsonify({
+                "code": 200,
+                "message": "Vector added successfully"
+            })
+        return jsonify({
+            "code": 500,
+            "error": "Failed to add vector"
+        })
+    except json.JSONDecodeError:
+        return jsonify({
+            "code": 400,
+            "error": "Invalid JSON format in request body"
+        })
+    except Exception as e:
+        return jsonify({
+            "code": 500,
+            "error": f"Unexpected error: {str(e)}"
+        })
 
 # 健康检查
 @app.route('/health')

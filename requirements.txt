@@ -6,6 +6,7 @@ langchain-anthropic
 langchain-community
 langchain-google-genai
 langchain-openai
+langchain_milvus
 pyjwt
 qianfan
 redis>=5.0.0
