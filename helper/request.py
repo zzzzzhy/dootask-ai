@@ -29,10 +29,12 @@ class Request:
         """
         根据 action 获取请求 URL
         """
-        return (
-            f"{server_url}/api/dialog/msg/stream" if action == "stream"
-            else f"{server_url}/api/dialog/msg/sendtext"
-        )
+        if action == "stream":
+            return f"{server_url}/api/dialog/msg/stream"
+        elif action == "notice":
+            return f"{server_url}/api/dialog/msg/sendnotice"
+        else:
+            return f"{server_url}/api/dialog/msg/sendtext"
 
     def call(self, data, **kwargs):
         """

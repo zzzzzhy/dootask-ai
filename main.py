@@ -86,12 +86,10 @@ def chat():
         redis_manager.delete_context(context_key)
         # 调用回调
         request_client.call({
-            "update_id": send_id,
-            "update_mark": "no",
-            "text": "Operation Successful",
-            "text_type": "md",
-            "silence": "yes"
-        })
+            "notice": "清空上下文",
+            "silence": "yes",
+            "source": "ai",
+        }, action='notice')
         return jsonify({"code": 200, "data": {"id": send_id, "key": ""}})
 
     # 生成随机8位字符串
@@ -121,9 +119,9 @@ def chat():
 
     # 通知 stream 地址
     request_client.call({
-        "source": "ai",
         "userid": msg_uid,
         "stream_url": f"/stream/{send_id}/{stream_key}",
+        "source": "ai",
     }, action='stream')
 
     # 返回成功响应
