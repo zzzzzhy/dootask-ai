@@ -54,6 +54,8 @@ def chat():
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
+        context_key = extras_json.get('context_key')
+        reply_id = int(extras_json.get('reply_id', 0))
         context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
         return jsonify({"code": 400, "error": "Invalid extras parameter"})
@@ -62,14 +64,15 @@ def chat():
     if not all([model_type, model_name, server_url, api_key]):
         return jsonify({"code": 400, "error": "Parameter error in extras"})
 
-    # 群里使用回复消息模式
-    reply_id = int(msg_id) if dialog_type == 'group' else 0
+    # 如果是群里的消息只有 @bot 的消息才回复
+    if dialog_type == 'group' and mention:
+        return jsonify({"code": 200, "data": {}})
 
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
 
     # 获取或初始化上下文
-    context_key = f"{dialog_id}_{msg_uid}"
+    context_key = f"{dialog_id}_{context_key}" if context_key else f"{dialog_id}_{msg_uid}"
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
@@ -84,10 +87,10 @@ def chat():
 
     # 创建消息
     send_id = request_client.call({
-        "reply_id": reply_id,
         "text": '...',
         "text_type": "md",
-        "silence": "yes"
+        "silence": "yes",
+        "reply_id": reply_id
     })
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
