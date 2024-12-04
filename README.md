@@ -120,9 +120,25 @@ docker-compose down
 默认服务端口为 5001，可通过环境变量 PORT 修改。
 Redis 默认连接到 localhost:6379，可通过环境变量 REDIS_HOST 和 REDIS_PORT 修改。
 
-## API 使用
+## API 文档
 
-### 对话模式
+API 文档提供了以下访问方式：
+
+1. 在线查看：
+   - 直接访问 Swagger UI：http://localhost:5001/swagger
+
+2. 导入到 Swagger Editor：
+   - 将 http://localhost:5001/swagger.yaml 的内容复制到编辑器中
+   - 或者直接导入 URL：File -> Import URL -> 输入 http://localhost:5001/swagger.yaml
+
+这样你可以：
+- 查看所有 API 端点的详细说明
+- 了解请求和响应的数据结构
+- 直接在线测试 API 接口
+
+### API 使用示例
+
+#### 对话模式
 
 对话模式支持上下文对话，通过 `/chat` 接口发送消息，然后通过 `/stream/{msg_id}/{stream_key}` 接口获取流式响应。
 
@@ -146,6 +162,8 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
   - `server_url`: 服务器地址
   - `api_key`: API密钥
   - `agency`: 代理服务器（可选）
+  - `context_key`: 自定义上下文键（可选，留空自动生成）
+  - `reply_id`: 要回复的消息 ID（可选）
   - `context_limit`: 上下文限制（可选）
 
 #### 获取响应流
@@ -358,25 +376,6 @@ docker-compose up
    - 所有请求都有适当的错误处理
    - 超时自动处理
    - 详细的错误信息返回
-
-## API 文档
-
-API 文档采用 OpenAPI (Swagger) 规范，可以通过以下方式查看：
-
-1. 直接查看 YAML 文件：
-```
-http://localhost:5001/swagger.yaml
-```
-
-2. 使用 Swagger UI（推荐）：
-   - 访问 [Swagger Editor](https://editor.swagger.io/)
-   - 将 http://localhost:5001/swagger.yaml 的内容复制到编辑器中
-   - 或者直接导入 URL：File -> Import URL -> 输入 http://localhost:5001/swagger.yaml
-
-这样你可以：
-- 查看所有 API 端点的详细说明
-- 了解请求和响应的数据结构
-- 直接在线测试 API 接口
 
 ## 许可证
 
