@@ -68,6 +68,20 @@ def chat():
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
 
+    # 获取或初始化上下文
+    context_key = f"{dialog_id}_{msg_uid}"
+    
+    # 如果是清空上下文的命令
+    if text in CLEAR_COMMANDS:
+        redis_manager.delete_context(context_key)
+        # 调用回调
+        request_client.call({
+            "notice": "上下文已清空",
+            "silence": "yes",
+            "source": "ai",
+        }, action='notice')
+        return jsonify({"code": 200, "data": {}})
+
     # 创建消息
     send_id = request_client.call({
         "reply_id": reply_id,
@@ -77,20 +91,6 @@ def chat():
     })
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
-
-    # 获取或初始化上下文
-    context_key = f"{dialog_id}_{msg_uid}"
-    
-    # 如果是清空上下文的命令
-    if text in CLEAR_COMMANDS:
-        redis_manager.delete_context(context_key)
-        # 调用回调
-        request_client.call({
-            "notice": "清空上下文",
-            "silence": "yes",
-            "source": "ai",
-        }, action='notice')
-        return jsonify({"code": 200, "data": {"id": send_id, "key": ""}})
 
     # 生成随机8位字符串
     stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
