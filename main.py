@@ -17,6 +17,9 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
+# AI结束对话的标记
+AI_END_CONVERSATION_FLAG = "<!--AI_END_CONVERSATION_FLAG-->"
+
 # 流式响应超时时间
 STREAM_TIMEOUT = 300
 
@@ -54,8 +57,8 @@ def chat():
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
+        before_text = extras_json.get('before_text')
         context_key = extras_json.get('context_key')
-        reply_id = int(extras_json.get('reply_id', 0))
         context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
         return jsonify({"code": 400, "error": "Invalid extras parameter"})
@@ -64,15 +67,25 @@ def chat():
     if not all([model_type, model_name, server_url, api_key]):
         return jsonify({"code": 400, "error": "Parameter error in extras"})
 
-    # 如果是群里的消息只有 @bot 的消息才回复
-    if dialog_type == 'group' and mention:
-        return jsonify({"code": 200, "data": {}})
+    # 如果是群里的消息
+    chat_state_key = ''
+    if dialog_type == 'group':
+        # 获取用户对话状态
+        before_text = (before_text + "\n" if before_text else "") + f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{AI_END_CONVERSATION_FLAG}"
+        chat_state_key = f"chat_state_{dialog_id}"
+
+        # 如果是@消息，开启对话状态
+        if mention:
+            redis_manager.set_cache(chat_state_key, "active", ex=86400)
+        # 如果没有@且不在对话状态中，不回复
+        elif not redis_manager.get_cache(chat_state_key):
+            return jsonify({"code": 200, "data": {}})
 
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
 
     # 获取或初始化上下文
-    context_key = f"{dialog_id}_{context_key}" if context_key else f"{dialog_id}_{msg_uid}"
+    context_key = f"{dialog_id}_{context_key}" if context_key else f"{dialog_id}"
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
@@ -90,7 +103,8 @@ def chat():
         "text": '...',
         "text_type": "md",
         "silence": "yes",
-        "reply_id": reply_id
+        "reply_id": msg_id,
+        "reply_check": "yes",
     })
     if not send_id:
         return jsonify({"code": 400, "error": "Send message failed"})
@@ -104,6 +118,9 @@ def chat():
         "token": token,
         "dialog_id": dialog_id,
         "version": version,
+
+        "before_text": before_text,
+        "chat_state_key": chat_state_key,
     
         "model_type": model_type,
         "model_name": model_name,
@@ -184,6 +201,10 @@ def stream(msg_id, stream_key):
             if data["system_message"]:
                 context.insert(0, ("system", data["system_message"]))
 
+            # 添加 before_text 到上下文
+            if data["before_text"]:
+                context.append(("human", data["before_text"]))
+
             # 添加用户的新消息
             context.append(("human", data["text"]))
             
@@ -198,6 +219,12 @@ def stream(msg_id, stream_key):
                 ("human", data["text"]),
                 ("assistant", response)
             ], data["model_type"], data["model_name"], data["context_limit"])
+
+            # 检查是否包含结束对话标记
+            if data.get("chat_state_key") and AI_END_CONVERSATION_FLAG in response:
+                response = response.replace(AI_END_CONVERSATION_FLAG, "")
+                redis_manager.delete_cache(data["chat_state_key"])
+                redis_manager.delete_context(data["context_key"])
             
         except Exception as e:
             # 处理异常

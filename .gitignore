@@ -75,6 +75,7 @@ config.json
 *.bak
 *.swp
 *~
+test.*
 
 # OS generated files
 .DS_Store

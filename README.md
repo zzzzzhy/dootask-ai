@@ -163,7 +163,7 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
   - `api_key`: API密钥
   - `agency`: 代理服务器（可选）
   - `context_key`: 自定义上下文键（可选，留空自动生成）
-  - `reply_id`: 要回复的消息 ID（可选）
+  - `before_text`: 前置文本（可选，不保存在下次上下文）
   - `context_limit`: 上下文限制（可选）
 
 #### 获取响应流
