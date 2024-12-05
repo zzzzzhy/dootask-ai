@@ -13,6 +13,7 @@ import requests
 import os
 import time
 import json
+import re
 
 def get_model_instance(model_type, model_name, api_key, agency=None, streaming=True):
     """根据模型类型返回对应的模型实例"""
@@ -123,6 +124,28 @@ def get_swagger_ui():
     </body>
     </html>
     """
+
+def filter_end_flag(text: str, flag: str) -> str:
+    """
+    方案1：使用列表遍历的方式（当前实现）
+    时间复杂度：O(n)，其中n是flag的长度
+    空间复杂度：O(n)，需要存储所有前缀
+    """
+    if not text or not flag:
+        return text
+    
+    # 替换完整的flag在全文任何地方
+    text = text.replace(flag, '')
+
+    # 生成flag的所有可能的前缀（从完整到单个字符）
+    flag_variants = [flag[:i] for i in range(len(flag), 4, -1)]
+    
+    # 检查文本是否以任何变体结尾
+    for variant in flag_variants:
+        if text.endswith(variant):
+            return text[:-len(variant)].rstrip()
+    
+    return text.rstrip()
 
 def json_content(content):
     return json.dumps({"content": content}, ensure_ascii=False)

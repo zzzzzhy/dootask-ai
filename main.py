@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
-from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content
+from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
 from helper.request import Request
 from helper.redis import RedisManager
 import json
@@ -18,7 +18,7 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
 # AI结束对话的标记
-AI_END_CONVERSATION_FLAG = "<!--AI_END_CONVERSATION_FLAG-->"
+END_CONVERSATION_MARK = "<!--::END_CHAT::-->"
 
 # 流式响应超时时间
 STREAM_TIMEOUT = 300
@@ -71,7 +71,7 @@ def chat():
     chat_state_key = ''
     if dialog_type == 'group':
         # 获取用户对话状态
-        before_text = (before_text + "\n" if before_text else "") + f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{AI_END_CONVERSATION_FLAG}"
+        before_text = (before_text + "\n" if before_text else "") + f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"
         chat_state_key = f"chat_state_{dialog_id}"
 
         # 如果是@消息，开启对话状态
@@ -212,7 +212,7 @@ def stream(msg_id, stream_key):
             for chunk in model.stream(context):
                 if chunk.content:
                     response += chunk.content
-                    redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
+                    redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
 
             # 更新上下文
             redis_manager.extend_contexts(data["context_key"], [
@@ -221,8 +221,8 @@ def stream(msg_id, stream_key):
             ], data["model_type"], data["model_name"], data["context_limit"])
 
             # 检查是否包含结束对话标记
-            if data.get("chat_state_key") and AI_END_CONVERSATION_FLAG in response:
-                response = response.replace(AI_END_CONVERSATION_FLAG, "")
+            if data.get("chat_state_key") and END_CONVERSATION_MARK in response:
+                response = filter_end_flag(response, END_CONVERSATION_MARK)
                 redis_manager.delete_cache(data["chat_state_key"])
                 redis_manager.delete_context(data["context_key"])
             
