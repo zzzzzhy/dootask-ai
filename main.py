@@ -67,11 +67,20 @@ def chat():
     if not all([model_type, model_name, server_url, api_key]):
         return jsonify({"code": 400, "error": "Parameter error in extras"})
 
+    # 上下文 before_text 处理
+    if not before_text:
+        before_text = []
+    elif isinstance(before_text, str):
+        before_text = [['human', before_text]]
+    elif isinstance(before_text, list):
+        if before_text and isinstance(before_text[0], str):
+            before_text = [['human', text] for text in before_text]
+
     # 如果是群里的消息
     chat_state_key = ''
     if dialog_type == 'group':
         # 获取用户对话状态
-        before_text = (before_text + "\n" if before_text else "") + f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"
+        before_text.append(["human", f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
         chat_state_key = f"chat_state_{dialog_id}"
 
         # 如果是@消息，开启对话状态
@@ -203,7 +212,8 @@ def stream(msg_id, stream_key):
 
             # 添加 before_text 到上下文
             if data["before_text"]:
-                context.append(("human", data["before_text"]))
+                for item in data["before_text"]:
+                    context.append(item)
 
             # 添加用户的新消息
             context.append(("human", data["text"]))

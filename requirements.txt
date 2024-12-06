@@ -2,11 +2,14 @@ dashscope
 flask
 httpx[socks]
 langchain
+langchain-core
 langchain-anthropic
 langchain-community
 langchain-google-genai
 langchain-openai
+langchain-text-splitters
 pyjwt
 qianfan
 redis>=5.0.0
 requests>=2.31.0
+tiktoken
