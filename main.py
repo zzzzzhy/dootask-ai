@@ -76,25 +76,26 @@ def chat():
         if before_text and isinstance(before_text[0], str):
             before_text = [['human', text] for text in before_text]
 
+    # 定义上下文键
+    context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
+
     # 如果是群里的消息
     chat_state_key = ''
     if dialog_type == 'group':
-        # 获取用户对话状态
-        before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
-        chat_state_key = f"chat_state_{dialog_id}"
-
+        # 定义对话状态键
+        chat_state_key = f"chat_state_{context_key}"
         # 如果是@消息，开启对话状态
         if mention:
             redis_manager.set_cache(chat_state_key, "active", ex=86400)
         # 如果没有@且不在对话状态中，不回复
         elif not redis_manager.get_cache(chat_state_key):
-            return jsonify({"code": 200, "data": {}})
+            return jsonify({"code": 200, "data": {"desc": "Not in conversation state"}})
+        # 添加提示上下文
+        before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
+        before_text.append(["assistant", f"好的，明白了。"])
 
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
-
-    # 获取或初始化上下文
-    context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
@@ -105,7 +106,7 @@ def chat():
             "silence": "yes",
             "source": "ai",
         }, action='notice')
-        return jsonify({"code": 200, "data": {}})
+        return jsonify({"code": 200, "data": {"desc": "Context cleared"}})
 
     # 创建消息
     send_id = request_client.call({
