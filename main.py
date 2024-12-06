@@ -58,7 +58,7 @@ def chat():
         api_key = extras_json.get('api_key')
         agency = extras_json.get('agency')
         before_text = extras_json.get('before_text')
-        context_key = extras_json.get('context_key')
+        context_key = extras_json.get('context_key', '')
         context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
         return jsonify({"code": 400, "error": "Invalid extras parameter"})
@@ -80,7 +80,7 @@ def chat():
     chat_state_key = ''
     if dialog_type == 'group':
         # 获取用户对话状态
-        before_text.append(["human", f"如果你判断用户想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
+        before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
         chat_state_key = f"chat_state_{dialog_id}"
 
         # 如果是@消息，开启对话状态
@@ -94,7 +94,7 @@ def chat():
     request_client = Request(server_url, version, token, dialog_id)
 
     # 获取或初始化上下文
-    context_key = f"{dialog_id}_{context_key}" if context_key else f"{dialog_id}"
+    context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
