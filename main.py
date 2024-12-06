@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
 from helper.request import Request
-from helper.redis import RedisManager
+from helper.redis import handle_context_limits, RedisManager
 import json
 import os
 import time
@@ -218,6 +218,9 @@ def stream(msg_id, stream_key):
             # 添加用户的新消息
             context.append(("human", data["text"]))
             
+            # 处理模型限制
+            context = handle_context_limits(context, data["model_type"], data["model_name"], data["context_limit"])
+
             # 开始请求流式响应
             for chunk in model.stream(context):
                 if chunk.content:
@@ -347,6 +350,9 @@ def invoke():
 
     # 添加用户的新消息
     context.append(("human", text))
+
+    # 处理模型限制
+    context = handle_context_limits(context, model_type, model_name, context_limit)
 
     # 开始请求直接响应
     try:
