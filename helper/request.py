@@ -33,6 +33,8 @@ class Request:
             return f"{server_url}/api/dialog/msg/stream"
         elif action == "notice":
             return f"{server_url}/api/dialog/msg/sendnotice"
+        elif action == "template":
+            return f"{server_url}/api/dialog/msg/sendtemplate"
         else:
             return f"{server_url}/api/dialog/msg/sendtext"
 

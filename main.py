@@ -84,14 +84,16 @@ def chat():
     if dialog_type == 'group':
         # 定义对话状态键
         chat_state_key = f"chat_state_{context_key}"
+        
         # 如果是@消息，开启对话状态
         if mention:
             redis_manager.set_cache(chat_state_key, "active", ex=86400)
         # 如果没有@且不在对话状态中，不回复
         elif not redis_manager.get_cache(chat_state_key):
             return jsonify({"code": 200, "data": {"desc": "Not in conversation state"}})
+        
         # 添加提示上下文
-        before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}"])
+        before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}，否则不要回复这个标记。"])
         before_text.append(["assistant", f"好的，明白了。"])
 
     # 创建请求客户端
@@ -194,6 +196,7 @@ def stream(msg_id, stream_key):
         data["status"] = "processing"
         redis_manager.set_input(msg_id, data)
 
+        is_end = False
         response = ""
         try:
             # 获取对应的模型实例
@@ -239,6 +242,7 @@ def stream(msg_id, stream_key):
                 response = filter_end_flag(response, END_CONVERSATION_MARK)
                 redis_manager.delete_cache(data["chat_state_key"])
                 redis_manager.delete_context(data["context_key"])
+                is_end = True
             
         except Exception as e:
             # 处理异常
@@ -266,6 +270,13 @@ def stream(msg_id, stream_key):
             "text_type": "md",
             "silence": "yes"
         })
+
+        # 如果是结束对话，通知用户
+        if is_end:
+            request_client.call({
+                "content": '[{"content":"再见"}]',
+                "silence": "yes",
+            }, action='template')
 
     def stream_producer():
         # 生成消息 key
