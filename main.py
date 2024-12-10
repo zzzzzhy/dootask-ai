@@ -2,12 +2,12 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 import time
 import random
 import string
-import threading
 
 app = Flask(__name__)
 
@@ -23,11 +23,11 @@ END_CONVERSATION_MARK = "<!--::END_CHAT::-->"
 # 流式响应超时时间
 STREAM_TIMEOUT = 300
 
-# 启动超时检查线程
-threading.Thread(target=check_timeouts, daemon=True, name="timeout_checker").start()
-
 # 创建 RedisManager
 redis_manager = RedisManager()
+
+# 创建线程池，设置最大线程数为20
+thread_pool = ThreadPoolExecutor(max_workers=20)
 
 # 处理聊天请求
 @app.route('/chat', methods=['POST', 'GET'])
@@ -294,21 +294,26 @@ def stream(msg_id, stream_key):
         
         # 如果是第一个请求，启动异步生产者
         if redis_manager.set_cache(msg_key, "", ex=STREAM_TIMEOUT, nx=True):
-            threading.Thread(
-                target=stream_generate,
-                args=(msg_id, msg_key, data, redis_manager),
-                daemon=True
-            ).start()
+            thread_pool.submit(stream_generate, msg_id, msg_key, data, redis_manager)
 
         # 所有请求都作为消费者处理
         wait_start = time.time()
         last_response = ""
+        sleep_interval = 0.01  # 减少睡眠时间
+        timeout_check_interval = 1.0  # 每秒检查一次超时
+        last_timeout_check = time.time()
+        
         while True:
-            if time.time() - wait_start > STREAM_TIMEOUT:
-                yield f"id: {msg_id}\nevent: replace\ndata: {json_content('Request timeout')}\n\n"
-                yield f"id: {msg_id}\nevent: done\ndata: {json_error('Timeout')}\n\n"
-                redis_manager.delete_cache(msg_key)
-                return
+            current_time = time.time()
+            
+            # 每秒才检查一次超时，减少 Redis 访问
+            if current_time - last_timeout_check >= timeout_check_interval:
+                if current_time - wait_start > STREAM_TIMEOUT:
+                    yield f"id: {msg_id}\nevent: replace\ndata: {json_content('Request timeout')}\n\n"
+                    yield f"id: {msg_id}\nevent: done\ndata: {json_error('Timeout')}\n\n"
+                    redis_manager.delete_cache(msg_key)
+                    return
+                last_timeout_check = current_time
 
             response = redis_manager.get_cache(msg_key)
             if response:
@@ -320,13 +325,20 @@ def stream(msg_id, stream_key):
                         yield f"id: {msg_id}\nevent: append\ndata: {json_content(append_response)}\n\n"
                 last_response = response
 
+                # 检查是否完成，如果完成立即返回
                 current_data = redis_manager.get_input(msg_id)
                 if current_data and current_data["status"] == "finished":
                     yield f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n"
                     redis_manager.delete_cache(msg_key)
                     return
 
-            time.sleep(0.1)
+            # 动态调整睡眠时间
+            if response:
+                # 如果有响应，使用更短的间隔以获得更好的实时性
+                time.sleep(sleep_interval)
+            else:
+                # 如果没有响应，使用稍长的间隔以减少系统负载
+                time.sleep(sleep_interval * 10)
 
     # 返回流式响应
     return Response(
