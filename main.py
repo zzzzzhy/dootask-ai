@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, Response, stream_with_context
 from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
-from concurrent.futures import ThreadPoolExecutor
+from helper.thread_pool import DynamicThreadPoolExecutor
 import json
 import os
 import time
@@ -26,8 +26,13 @@ STREAM_TIMEOUT = 300
 # 创建 RedisManager
 redis_manager = RedisManager()
 
-# 创建线程池，设置最大线程数为20
-thread_pool = ThreadPoolExecutor(max_workers=20)
+# 创建动态线程池
+thread_pool = DynamicThreadPoolExecutor(
+    min_workers=5,          # 最小5个线程
+    max_workers=20,         # 最大20个线程
+    check_interval=30,      # 每30秒检查一次负载
+    thread_name_prefix="ai_stream_"
+)
 
 # 处理聊天请求
 @app.route('/chat', methods=['POST', 'GET'])
@@ -192,13 +197,17 @@ def stream(msg_id, stream_key):
         )
 
     def stream_generate(msg_id, msg_key, data, redis_manager):
-        # 更新数据状态
-        data["status"] = "processing"
-        redis_manager.set_input(msg_id, data)
+        """
+        流式生成响应
+        """
 
         is_end = False
         response = ""
         try:
+            # 更新数据状态
+            data["status"] = "processing"
+            redis_manager.set_input(msg_id, data)
+            
             # 获取对应的模型实例
             model = get_model_instance(
                 model_type=data["model_type"],
@@ -207,7 +216,7 @@ def stream(msg_id, stream_key):
                 agency=data["agency"]
             )
 
-            # 前置上下文
+            # 前置上下文处理
             pre_context = []
 
             # 添加系统消息到上下文开始
@@ -216,8 +225,7 @@ def stream(msg_id, stream_key):
 
             # 添加 before_text 到上下文
             if data["before_text"]:
-                for item in data["before_text"]:
-                    pre_context.append(item)
+                pre_context.extend(data["before_text"])
 
             # 获取现有上下文
             middle_context = redis_manager.get_context(data["context_key"])
@@ -227,9 +235,9 @@ def stream(msg_id, stream_key):
             
             # 处理模型限制
             final_context = handle_context_limits(
-                pre_context = pre_context,
-                middle_context = middle_context,
-                end_context = end_context,
+                pre_context=pre_context,
+                middle_context=middle_context,
+                end_context=end_context,
                 model_type=data["model_type"], 
                 model_name=data["model_name"], 
                 custom_limit=data["context_limit"]
@@ -252,43 +260,51 @@ def stream(msg_id, stream_key):
                 response = filter_end_flag(response, END_CONVERSATION_MARK)
                 redis_manager.delete_cache(data["chat_state_key"])
                 redis_manager.delete_context(data["context_key"])
-                is_end = True
-            
+                is_end = True            
         except Exception as e:
             # 处理异常
             response = str(e)
             redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
+        finally:
+            # 确保状态总是被更新
+            try:
+                # 更新数据状态
+                data["status"] = "finished"
+                data["response"] = response
+                redis_manager.set_input(msg_id, data)
 
-        # 更新数据状态
-        data["status"] = "finished"
-        data["response"] = response
-        redis_manager.set_input(msg_id, data)
+                # 创建请求客户端
+                request_client = Request(
+                    server_url=data["server_url"], 
+                    version=data["version"], 
+                    token=data["token"], 
+                    dialog_id=data["dialog_id"]
+                )
 
-        # 创建请求客户端
-        request_client = Request(
-            server_url=data["server_url"], 
-            version=data["version"], 
-            token=data["token"], 
-            dialog_id=data["dialog_id"]
-        )
+                # 更新完整消息
+                request_client.call({
+                    "update_id": msg_id,
+                    "update_mark": "no",
+                    "text": response,
+                    "text_type": "md",
+                    "silence": "yes"
+                })
 
-        # 更新完整消息
-        request_client.call({
-            "update_id": msg_id,
-            "update_mark": "no",
-            "text": response,
-            "text_type": "md",
-            "silence": "yes"
-        })
-
-        # 如果是结束对话，通知用户
-        if is_end:
-            request_client.call({
-                "content": '[{"content":"再见"}]',
-                "silence": "yes",
-            }, action='template')
+                # 如果是结束对话，通知用户
+                if is_end:
+                    request_client.call({
+                        "content": '[{"content":"再见"}]',
+                        "silence": "yes",
+                    }, action='template')   
+            except Exception as e:
+                # 记录最终阶段的错误，但不影响主流程
+                print(f"Error in cleanup: {str(e)}")
 
     def stream_producer():
+        """
+        流式生产者
+        """
+
         # 生成消息 key
         msg_key = f"stream_msg_{msg_id}"
         
@@ -302,6 +318,8 @@ def stream(msg_id, stream_key):
         sleep_interval = 0.01  # 减少睡眠时间
         timeout_check_interval = 1.0  # 每秒检查一次超时
         last_timeout_check = time.time()
+        check_status_interval = 0.2  # 每0.2秒检查一次完成状态
+        last_status_check = time.time()
         
         while True:
             current_time = time.time()
@@ -311,7 +329,6 @@ def stream(msg_id, stream_key):
                 if current_time - wait_start > STREAM_TIMEOUT:
                     yield f"id: {msg_id}\nevent: replace\ndata: {json_content('Request timeout')}\n\n"
                     yield f"id: {msg_id}\nevent: done\ndata: {json_error('Timeout')}\n\n"
-                    redis_manager.delete_cache(msg_key)
                     return
                 last_timeout_check = current_time
 
@@ -325,19 +342,20 @@ def stream(msg_id, stream_key):
                         yield f"id: {msg_id}\nevent: append\ndata: {json_content(append_response)}\n\n"
                 last_response = response
 
-                # 检查是否完成，如果完成立即返回
-                current_data = redis_manager.get_input(msg_id)
-                if current_data and current_data["status"] == "finished":
-                    yield f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n"
-                    redis_manager.delete_cache(msg_key)
-                    return
+                # 只在有新响应时才检查状态
+                if current_time - last_status_check >= check_status_interval:
+                    current_data = redis_manager.get_input(msg_id)
+                    if current_data and current_data["status"] == "finished":
+                        yield f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n"
+                        return
+                    last_status_check = current_time
 
             # 动态调整睡眠时间
             if response:
                 # 如果有响应，使用更短的间隔以获得更好的实时性
                 time.sleep(sleep_interval)
             else:
-                # 如果没有响应，使用稍长的间隔以减少系统负载
+                # 如果没有响应，使用更长的间隔以减少系统负载
                 time.sleep(sleep_interval * 10)
 
     # 返回流式响应
