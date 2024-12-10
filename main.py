@@ -28,9 +28,8 @@ redis_manager = RedisManager()
 
 # 创建动态线程池
 thread_pool = DynamicThreadPoolExecutor(
-    min_workers=5,          # 最小5个线程
-    max_workers=20,         # 最大20个线程
-    check_interval=30,      # 每30秒检查一次负载
+    min_workers=5,
+    max_workers=50,
     thread_name_prefix="ai_stream_"
 )
 
