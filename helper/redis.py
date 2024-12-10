@@ -92,10 +92,11 @@ def count_tokens(text: str, model_type: str, model_name: str) -> int:
     # 对于其他模型使用估算方法
     return estimate_tokens(text)
 
-def handle_context_limits(context: List[Tuple[str, str]], model_type: str = None, model_name: str = None, custom_limit: int = None) -> List[Tuple[str, str]]:
+def handle_context_limits(pre_context: List[Tuple[str, str]], middle_context: List[Tuple[str, str]], end_context: List[Tuple[str, str]], model_type: str = None, model_name: str = None, custom_limit: int = None) -> List[Tuple[str, str]]:
     """处理上下文，确保不超过模型token限制"""
-    if not context:
-        return context
+    all_context = pre_context + middle_context + end_context
+    if not all_context:
+        return []
         
     # 获取token限制
     if custom_limit and custom_limit > 0:
@@ -106,31 +107,43 @@ def handle_context_limits(context: List[Tuple[str, str]], model_type: str = None
             model_limits = CONTEXT_LIMITS[model_type]
             token_limit = model_limits.get(model_name, model_limits.get('default', 2000))
     
-    # 分离system message和其他消息
-    system_msg = next((msg for msg in context if msg[0] == "system_message"), None)
-    other_msgs = [msg for msg in context if msg[0] != "system_message"]
-    
-    # 计算system message占用的token数
-    system_tokens = count_tokens(system_msg[1], model_type, model_name) if system_msg else 0
-    if system_tokens >= token_limit:
-        return [system_msg] if system_msg else []
-        
-    # 从最新消息开始添加，直到达到限制
+    # 按优先级处理上下文
     result = []
-    current_tokens = system_tokens
-    
-    for msg in reversed(other_msgs):
+    current_tokens = 0
+
+    # 1. 首先添加 end_context（最高优先级）
+    for msg in end_context:
         msg_tokens = count_tokens(msg[1], model_type, model_name)
         if current_tokens + msg_tokens <= token_limit:
             result.append(msg)
             current_tokens += msg_tokens
         else:
+            # 如果连 end_context 都放不下，直接返回能放下的部分
+            return result
+
+    # 2. 其次添加 pre_context（第二优先级）
+    for msg in pre_context:
+        msg_tokens = count_tokens(msg[1], model_type, model_name)
+        if current_tokens + msg_tokens <= token_limit:
+            result.insert(len(result) - len(end_context), msg)
+            current_tokens += msg_tokens
+        else:
+            break
+
+    # 3. 最后添加 middle_context（最低优先级）
+    # 从最新的消息开始添加，保存到临时列表中
+    temp_middle = []
+    for msg in reversed(middle_context):
+        msg_tokens = count_tokens(msg[1], model_type, model_name)
+        if current_tokens + msg_tokens <= token_limit:
+            temp_middle.append(msg)
+            current_tokens += msg_tokens
+        else:
             break
     
-    # 反转消息列表并在开头添加system message（如果存在）
-    result = list(reversed(result))
-    if system_msg:
-        result.insert(0, system_msg)
+    # 将收集到的 middle_context 按原始顺序插入
+    for msg in reversed(temp_middle):
+        result.insert(len(result) - len(end_context), msg)
             
     return result
 
@@ -168,7 +181,14 @@ class RedisManager:
         if not isinstance(value, list):
             raise ValueError("Context must be a list of tuples")
         # 处理模型限制
-        value = handle_context_limits(value, model_type, model_name, context_limit)
+        final_context = handle_context_limits(
+            pre_context=[],
+            middle_context=value,
+            end_context=[],
+            model_type=model_type,
+            model_name=model_name,
+            custom_limit=context_limit
+        )
         # 保存到 Redis
         self.client.set(self._make_key("context", key), json.dumps(value))
 

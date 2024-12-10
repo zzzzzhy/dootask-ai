@@ -94,7 +94,7 @@ def chat():
         
         # 添加提示上下文
         before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}，否则不要回复这个标记。"])
-        before_text.append(["assistant", f"好的，明白了。"])
+        # before_text.append(["assistant", f"好的，明白了。"])
 
     # 创建请求客户端
     request_client = Request(server_url, version, token, dialog_id)
@@ -207,26 +207,36 @@ def stream(msg_id, stream_key):
                 agency=data["agency"]
             )
 
-            # 获取上下文
-            context = redis_manager.get_context(data["context_key"])
+            # 前置上下文
+            pre_context = []
 
             # 添加系统消息到上下文开始
             if data["system_message"]:
-                context.insert(0, ("system", data["system_message"]))
+                pre_context.append(("system", data["system_message"]))
 
             # 添加 before_text 到上下文
             if data["before_text"]:
                 for item in data["before_text"]:
-                    context.append(item)
+                    pre_context.append(item)
+
+            # 获取现有上下文
+            middle_context = redis_manager.get_context(data["context_key"])
 
             # 添加用户的新消息
-            context.append(("human", data["text"]))
+            end_context = [("human", data["text"])]
             
             # 处理模型限制
-            context = handle_context_limits(context, data["model_type"], data["model_name"], data["context_limit"])
+            final_context = handle_context_limits(
+                pre_context = pre_context,
+                middle_context = middle_context,
+                end_context = end_context,
+                model_type=data["model_type"], 
+                model_name=data["model_name"], 
+                custom_limit=data["context_limit"]
+            )
 
             # 开始请求流式响应
-            for chunk in model.stream(context):
+            for chunk in model.stream(final_context):
                 if chunk.content:
                     response += chunk.content
                     redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
@@ -334,12 +344,22 @@ def invoke():
     system_message = request.args.get('system_message') or request.form.get('system_message')
     api_key = request.args.get('api_key') or request.form.get('api_key')
     agency = request.args.get('agency') or request.form.get('agency')
+    before_text = request.args.get('before_text') or request.form.get('before_text')
     context_key = request.args.get('context_key') or request.form.get('context_key')
     context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
     
     # 检查必要参数是否为空
     if not all([text, api_key]):
         return jsonify({"code": 400, "error": "Parameter error"})
+
+    # 上下文 before_text 处理
+    if not before_text:
+        before_text = []
+    elif isinstance(before_text, str):
+        before_text = [['human', before_text]]
+    elif isinstance(before_text, list):
+        if before_text and isinstance(before_text[0], str):
+            before_text = [['human', text] for text in before_text]
 
     # 获取模型实例
     model = get_model_instance(
@@ -350,25 +370,37 @@ def invoke():
         streaming=False,
     )
 
-    # 初始化上下文
-    if context_key:
-        context = redis_manager.get_context(f"invoke_{context_key}")
-    else:
-        context = []
+    # 前置上下文
+    pre_context = []
 
-    # 添加系统消息到上下文
+    # 添加系统消息到上下文开始
     if system_message:
-        context.insert(0, ("system", system_message))
+        pre_context.append(("system", system_message))
+
+    # 添加 before_text 到上下文
+    if before_text:
+        for item in before_text:
+            pre_context.append(item)
+
+    # 获取现有上下文
+    middle_context = redis_manager.get_context(f"invoke_{context_key}")
 
     # 添加用户的新消息
-    context.append(("human", text))
+    end_context = [("human", text)]
 
     # 处理模型限制
-    context = handle_context_limits(context, model_type, model_name, context_limit)
+    final_context = handle_context_limits(
+        pre_context = pre_context,
+        middle_context = middle_context,
+        end_context = end_context,
+        model_type=model_type, 
+        model_name=model_name, 
+        custom_limit=context_limit
+    )
 
     # 开始请求直接响应
     try:
-        response = model.invoke(context)
+        response = model.invoke(final_context)
         if context_key:
             redis_manager.extend_contexts(f"invoke_{context_key}", [
                 ("human", text),

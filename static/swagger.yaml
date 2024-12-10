@@ -66,6 +66,12 @@ paths:
           schema:
             type: string
           description: Context key for context support
+        - name: before_text
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional context to be prepended after the system prompt
         - name: context_limit
           in: query
           required: false
@@ -213,7 +219,7 @@ paths:
             - api_key: API key for authentication (required)
             - agency: Optional proxy server URL
             - context_key: Custom context key (optional, auto-generated if empty)
-            - before_text: Optional text to prepend to the message (required, do not save in next context)
+            - before_text: Context to be prepended after the system prompt (optional, not saved in next context, context priority: custom context (message text) > system_message > before_text)
             - context_limit: Optional context limit (in tokens, e.g., 32000)
       responses:
         '200':
