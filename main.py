@@ -242,11 +242,18 @@ def stream(msg_id, stream_key):
                 custom_limit=data["context_limit"]
             )
 
+            # 缓存配置
+            cache_interval = 0.1  # 缓存间隔
+            last_cache_time = time.time()
+
             # 开始请求流式响应
             for chunk in model.stream(final_context):
                 if chunk.content:
                     response += chunk.content
-                    redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                    current_time = time.time()
+                    if current_time - last_cache_time >= cache_interval:
+                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                        last_cache_time = current_time                    
 
             # 更新上下文
             redis_manager.extend_contexts(data["context_key"], [
@@ -314,16 +321,16 @@ def stream(msg_id, stream_key):
         # 所有请求都作为消费者处理
         wait_start = time.time()
         last_response = ""
-        sleep_interval = 0.01  # 减少睡眠时间
-        timeout_check_interval = 1.0  # 每秒检查一次超时
+        sleep_interval = 0.1  # 睡眠间隔
+        timeout_check_interval = 1.0  # 检查超时间隔
         last_timeout_check = time.time()
-        check_status_interval = 0.2  # 每0.2秒检查一次完成状态
+        check_status_interval = 0.2  # 检查完成状态间隔
         last_status_check = time.time()
         
         while True:
             current_time = time.time()
             
-            # 每秒才检查一次超时，减少 Redis 访问
+            # 检查超时
             if current_time - last_timeout_check >= timeout_check_interval:
                 if current_time - wait_start > STREAM_TIMEOUT:
                     yield f"id: {msg_id}\nevent: replace\ndata: {json_content('Request timeout')}\n\n"
@@ -349,13 +356,8 @@ def stream(msg_id, stream_key):
                         return
                     last_status_check = current_time
 
-            # 动态调整睡眠时间
-            if response:
-                # 如果有响应，使用更短的间隔以获得更好的实时性
-                time.sleep(sleep_interval)
-            else:
-                # 如果没有响应，使用更长的间隔以减少系统负载
-                time.sleep(sleep_interval * 10)
+            # 睡眠等待
+            time.sleep(sleep_interval)
 
     # 返回流式响应
     return Response(
