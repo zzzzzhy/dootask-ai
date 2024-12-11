@@ -5,6 +5,10 @@ import re
 import tiktoken
 from typing import List, Tuple
 
+# 提前加载所需的编码
+tiktoken.get_encoding("o200k_base")
+tiktoken.get_encoding("cl100k_base")
+
 # 定义模型的上下文限制（token数）
 CONTEXT_LIMITS = {
     "openai": {
