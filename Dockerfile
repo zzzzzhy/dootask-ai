@@ -41,6 +41,10 @@ ENV PORT=5001 \
     REDIS_HOST=redis \
     REDIS_PORT=6379
 
+# 安装 wget
+RUN apt-get update && apt-get install -y --no-install-recommends wget && \
+    rm -rf /var/lib/apt/lists/*
+
 # 复制项目文件
 COPY main.py .
 COPY helper/ helper/
