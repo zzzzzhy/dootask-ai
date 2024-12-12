@@ -4,14 +4,19 @@ from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, jso
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
 from helper.thread_pool import DynamicThreadPoolExecutor
+from helper.log_filter import HealthCheckFilter
 import json
 import os
 import time
 import random
 import string
+import logging
 
 app = Flask(__name__)
 CORS(app)  # 启用CORS，允许所有来源的跨域请求
+
+# 应用日志过滤器到 Werkzeug 日志
+logging.getLogger('werkzeug').addFilter(HealthCheckFilter())
 
 # 服务启动端口
 SERVER_PORT = int(os.environ.get('PORT', 5001))
