@@ -1,5 +1,6 @@
 dashscope
 flask
+flask-cors>=5.0.0
 httpx[socks]
 langchain
 langchain-core

@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
+from flask_cors import CORS
 from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
@@ -10,6 +11,7 @@ import random
 import string
 
 app = Flask(__name__)
+CORS(app)  # 启用CORS，允许所有来源的跨域请求
 
 # 服务启动端口
 SERVER_PORT = int(os.environ.get('PORT', 5001))
