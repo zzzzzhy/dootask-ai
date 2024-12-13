@@ -19,6 +19,43 @@ SERVER_PORT = int(os.environ.get('PORT', 5001))
 # 清空上下文的命令
 CLEAR_COMMANDS = [":clear", ":reset", ":restart", ":new", ":清空上下文", ":重置上下文", ":重启", ":重启对话"]
 
+# AI结束对话的关键词
+BYE_WORDS = [
+    # 简体中文
+    "再见", "拜拜", "退下", "告辞", "走了", "下次见", "回头见", "不打扰了", "谢谢再见", "辛苦了",
+    
+    # 繁体中文
+    "再見", "拜拜", "告辭", "下次見", "回頭見", "不打擾了", "謝謝再見", "辛苦了",
+    
+    # 英语
+    "goodbye", "bye", "bye bye", "see you", "see you later", "farewell", "take care", "have a nice day",
+    "thanks bye", "good night", "catch you later", "until next time",
+    
+    # 日语
+    "さようなら", "じゃあね", "バイバイ", "また会いましょう", "お疲れ様でした", "失礼します",
+    "では", "またね", "お先に", "お疲れ", "お疲れ様", "失礼いたします",
+    
+    # 韩语
+    "안녕히 계세요", "안녕", "잘 가", "다음에 봐요", "수고하셨습니다", "안녕히 가세요",
+    "다음에 만나요", "잘 있어요", "수고했어요",
+    
+    # 德语
+    "auf wiedersehen", "tschüss", "bis später", "bis bald", "mach's gut", "ciao",
+    "servus", "ade", "lebewohl",
+    
+    # 法语
+    "au revoir", "salut", "à bientôt", "à plus tard", "adieu", "bonne journée",
+    "à la prochaine", "au plaisir",
+    
+    # 印度尼西亚语
+    "selamat tinggal", "sampai jumpa", "dadah", "sampai ketemu lagi", "permisi",
+    "terima kasih", "selamat jalan",
+    
+    # 俄语
+    "до свидания", "пока", "прощай", "увидимся", "всего хорошего", "до встречи",
+    "счастливо", "всего доброго"
+]
+
 # AI结束对话的标记
 END_CONVERSATION_MARK = "<!--::END_CHAT::-->"
 
@@ -82,6 +119,9 @@ def chat():
         if before_text and isinstance(before_text[0], str):
             before_text = [['human', text] for text in before_text]
 
+    # 创建请求客户端
+    request_client = Request(server_url, version, token, dialog_id)
+
     # 定义上下文键
     context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
 
@@ -90,6 +130,16 @@ def chat():
     if dialog_type == 'group':
         # 定义对话状态键
         chat_state_key = f"chat_state_{context_key}"
+
+        # 本地判断再见
+        if text in BYE_WORDS:
+            redis_manager.delete_cache(chat_state_key)
+            redis_manager.delete_context(context_key)
+            request_client.call({
+                "content": '[{"content":"再见"}]',
+                "silence": "yes",
+            }, action='template')   
+            return jsonify({"code": 200, "data": {"desc": "Bye"}})
         
         # 如果是@消息，开启对话状态
         if mention:
@@ -101,9 +151,6 @@ def chat():
         # 添加提示上下文
         before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}，否则不要回复这个标记。"])
         # before_text.append(["assistant", f"好的，明白了。"])
-
-    # 创建请求客户端
-    request_client = Request(server_url, version, token, dialog_id)
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
