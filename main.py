@@ -85,12 +85,13 @@ def chat():
 
         # 本地判断再见
         if text in BYE_WORDS:
-            redis_manager.delete_cache(chat_state_key)
-            redis_manager.delete_context(context_key)
-            request_client.call({
-                "content": '[{"content":"再见"}]',
-                "silence": "yes",
-            }, action='template')   
+            if redis_manager.get_cache(chat_state_key):
+                redis_manager.delete_cache(chat_state_key)
+                redis_manager.delete_context(context_key)
+                request_client.call({
+                    "content": '[{"content":"再见"}]',
+                    "silence": "yes",
+                }, action='template')   
             return jsonify({"code": 200, "data": {"desc": "Bye"}})
         
         # 如果是@消息，开启对话状态
