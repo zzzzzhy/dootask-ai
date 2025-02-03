@@ -15,7 +15,7 @@ import time
 import json
 import re
 
-def get_model_instance(model_type, model_name, api_key, agency=None, streaming=True):
+def get_model_instance(model_type, model_name, api_key, base_url=None, agency=None, streaming=True):
     """根据模型类型返回对应的模型实例"""
 
     model_configs = {
@@ -47,6 +47,8 @@ def get_model_instance(model_type, model_name, api_key, agency=None, streaming=T
             config = {
                 "api_key": api_key,
             }
+            if base_url:
+                config.update({"base_url": base_url})
             if model_type == "wenxin":
                 api_key, secret_key = (api_key.split(':') + [None])[:2]
                 config.update({"api_key": api_key, "secret_key": secret_key})

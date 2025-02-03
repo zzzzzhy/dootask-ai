@@ -51,6 +51,7 @@ def chat():
         system_message = extras_json.get('system_message')
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
+        base_url = extras_json.get('base_url')
         agency = extras_json.get('agency')
         before_text = extras_json.get('before_text')
         context_key = extras_json.get('context_key', '')
@@ -145,6 +146,7 @@ def chat():
         "system_message": system_message,
         "server_url": server_url,
         "api_key": api_key,
+        "base_url": base_url,
         "agency": agency,
         "context_limit": context_limit,
 
@@ -214,6 +216,7 @@ def stream(msg_id, stream_key):
                 model_type=data["model_type"],
                 model_name=data["model_name"],
                 api_key=data["api_key"],
+                base_url=data["base_url"],
                 agency=data["agency"]
             )
 
@@ -378,6 +381,7 @@ def invoke():
     model_name = request.args.get('model_name') or request.form.get('model_name') or 'gpt-3.5-turbo'
     system_message = request.args.get('system_message') or request.form.get('system_message')
     api_key = request.args.get('api_key') or request.form.get('api_key')
+    base_url = request.args.get('base_url') or request.form.get('base_url')
     agency = request.args.get('agency') or request.form.get('agency')
     before_text = request.args.get('before_text') or request.form.get('before_text')
     context_key = request.args.get('context_key') or request.form.get('context_key')
@@ -401,6 +405,7 @@ def invoke():
         model_type=model_type,
         model_name=model_name,
         api_key=api_key,
+        base_url=base_url,
         agency=agency,
         streaming=False,
     )

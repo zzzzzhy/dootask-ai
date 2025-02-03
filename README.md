@@ -161,6 +161,7 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
   - `system_message`: 系统提示词（可选）
   - `server_url`: 服务器地址
   - `api_key`: API密钥
+  - `base_url`: 基础URL（可选，仅在 model_type 为 openai 时生效）
   - `agency`: 代理服务器（可选）
   - `context_key`: 自定义上下文键（可选，留空自动生成）
   - `before_text`: 前置上下文，在系统提示词之后（可选，不保存在下次上下文，上下文优先级：自定义上下文（对话内容） > 系统提示词 > 前置上下文）
@@ -190,6 +191,7 @@ GET /invoke?text=hello&model_type=openai&model_name=gpt-4&api_key=your-api-key&s
 - `model_type`: 模型类型（可选，默认为 openai）
 - `model_name`: 模型名称（可选，默认为 gpt-3.5-turbo）
 - `system_message`: 系统提示词（可选）
+- `base_url`: 基础URL（可选，仅在 model_type 为 openai 时生效）
 - `agency`: 代理服务器（可选）
 - `context_key`: 上下文键（可选）
 - `before_text`: 前置上下文（可选）
