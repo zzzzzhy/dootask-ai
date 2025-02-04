@@ -34,6 +34,11 @@ CONTEXT_LIMITS = {
         "claude-2.0": 100000,
         "default": 100000
     },
+    "deepseek": {
+        "deepseek-chat": 200000,
+        "deepseek-reasoner": 200000,
+        "default": 200000
+    },
     "gemini": {
         "gemini-1.5-flash": 100000,
         "gemini-1.5-flash-8b": 100000,

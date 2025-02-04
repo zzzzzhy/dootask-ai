@@ -1,6 +1,7 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_deepseek import ChatDeepSeek
 from langchain_community.chat_models import (
     ChatZhipuAI,
     ChatTongyi,
@@ -28,6 +29,7 @@ def get_model_instance(model_type, model_name, api_key, base_url=None, agency=No
         "gemini": (ChatGoogleGenerativeAI, {
             "google_api_key": api_key,
         }),
+        "deepseek": (ChatDeepSeek, None),
         "zhipu": (ChatZhipuAI, None),
         "qwen": (ChatTongyi, None),
         "wenxin": (QianfanChatEndpoint, None),
@@ -47,11 +49,12 @@ def get_model_instance(model_type, model_name, api_key, base_url=None, agency=No
             config = {
                 "api_key": api_key,
             }
-            if base_url:
-                config.update({"base_url": base_url})
             if model_type == "wenxin":
                 api_key, secret_key = (api_key.split(':') + [None])[:2]
                 config.update({"api_key": api_key, "secret_key": secret_key})
+
+        if base_url:
+            config.update({"base_url": base_url})
 
         common_params = {
             "model": model_name,
