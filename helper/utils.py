@@ -10,7 +10,6 @@ from langchain_community.chat_models import (
 from .deepseek import DeepseekChatOpenAI
 from .request import Request
 from .redis import RedisManager
-import requests
 import os
 import time
 import json
@@ -163,3 +162,9 @@ def json_error(error):
 
 def json_empty():
     return json.dumps({})
+
+def context_filter(context):
+    if "::: reasoning\n" in context:
+        # response 去除 reasoning
+        context = re.sub(r'::: reasoning\n.*?:::', '', context, flags=re.DOTALL)
+    return context

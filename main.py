@@ -1,12 +1,11 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-from helper.utils import get_model_instance, check_timeouts, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag
+from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag, context_filter
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
 from helper.thread_pool import DynamicThreadPoolExecutor
 from helper.config import SERVER_PORT, CLEAR_COMMANDS, BYE_WORDS, END_CONVERSATION_MARK, STREAM_TIMEOUT
 import json
-import os
 import time
 import random
 import string
@@ -104,7 +103,6 @@ def chat():
         
         # 添加提示上下文
         before_text.append(["human", f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}，否则不要回复这个标记。"])
-        # before_text.append(["assistant", f"好的，明白了。"])
     
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
@@ -229,7 +227,14 @@ def stream(msg_id, stream_key):
 
             # 添加 before_text 到上下文
             if data["before_text"]:
-                pre_context.extend(data["before_text"])
+                # 这些模型不支持连续的消息，需要在每条消息之间插入确认消息
+                models_need_confirmation = ["deepseek-reasoner", "deepseek-coder"]
+                if data["model_name"] in models_need_confirmation:
+                    for msg in data["before_text"]:
+                        pre_context.append(msg)
+                        pre_context.append(["assistant", "好的，明白了。"])
+                else:
+                    pre_context.extend(data["before_text"])
 
             # 获取现有上下文
             middle_context = redis_manager.get_context(data["context_key"])
@@ -278,15 +283,16 @@ def stream(msg_id, stream_key):
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
                         last_cache_time = current_time                    
 
+            response_cache = context_filter(response)
             # 更新上下文
             redis_manager.extend_contexts(data["context_key"], [
                 ("human", data["text"]),
-                ("assistant", response)
+                ("assistant", response_cache)
             ], data["model_type"], data["model_name"], data["context_limit"])
 
             # 检查是否包含结束对话标记
-            if data.get("chat_state_key") and END_CONVERSATION_MARK in response:
-                response = filter_end_flag(response, END_CONVERSATION_MARK)
+            if data.get("chat_state_key") and END_CONVERSATION_MARK in response_cache:
+                response_cache = filter_end_flag(response_cache, END_CONVERSATION_MARK)
                 redis_manager.delete_cache(data["chat_state_key"])
                 redis_manager.delete_context(data["context_key"])
                 is_end = True            
@@ -437,8 +443,12 @@ def invoke():
 
     # 添加 before_text 到上下文
     if before_text:
+        # 优化处理不同模型的上下文添加逻辑
+        models_need_confirmation = {"deepseek-reasoner", "deepseek-coder"}
         for item in before_text:
             pre_context.append(item)
+            if model_name in models_need_confirmation:
+                pre_context.append(("assistant", "好的，明白了。"))
 
     # 获取现有上下文
     middle_context = redis_manager.get_context(f"invoke_{context_key}")
@@ -460,9 +470,10 @@ def invoke():
     try:
         response = model.invoke(final_context)
         if context_key:
+            response_cache = context_filter(response.content)
             redis_manager.extend_contexts(f"invoke_{context_key}", [
                 ("human", text),
-                ("assistant", response.content)
+                ("assistant", response_cache)
             ], model_type, model_name, context_limit)
         return jsonify({
             "code": 200, 
