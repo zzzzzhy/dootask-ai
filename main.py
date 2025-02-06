@@ -251,9 +251,27 @@ def stream(msg_id, stream_key):
             cache_interval = 0.1  # 缓存间隔
             last_cache_time = time.time()
 
+            # 状态变量
+            has_reasoning = False
+            is_response = False
+
             # 开始请求流式响应
             for chunk in model.stream(final_context):
+                if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content and not is_response:
+                    if not has_reasoning:
+                        response += "::: reasoning\n"
+                        has_reasoning = True
+                    response += chunk.reasoning_content
+                    current_time = time.time()
+                    if current_time - last_cache_time >= cache_interval:
+                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                        last_cache_time = current_time  
+                        
                 if chunk.content:
+                    if has_reasoning:
+                        response += "\n:::\n\n"
+                        has_reasoning = False
+                    is_response = True
                     response += chunk.content
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:

@@ -1,13 +1,13 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_deepseek import ChatDeepSeek
 from langchain_community.chat_models import (
     ChatZhipuAI,
     ChatTongyi,
     QianfanChatEndpoint,
     ChatCohere
 )
+from .deepseek import DeepseekChatOpenAI
 from .request import Request
 from .redis import RedisManager
 import requests
@@ -29,7 +29,7 @@ def get_model_instance(model_type, model_name, api_key, base_url=None, agency=No
         "gemini": (ChatGoogleGenerativeAI, {
             "google_api_key": api_key,
         }),
-        "deepseek": (ChatDeepSeek, None),
+        "deepseek": (DeepseekChatOpenAI, None),
         "zhipu": (ChatZhipuAI, None),
         "qwen": (ChatTongyi, None),
         "wenxin": (QianfanChatEndpoint, None),

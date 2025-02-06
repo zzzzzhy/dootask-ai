@@ -35,9 +35,9 @@ CONTEXT_LIMITS = {
         "default": 100000
     },
     "deepseek": {
-        "deepseek-chat": 200000,
-        "deepseek-reasoner": 200000,
-        "default": 200000
+        "deepseek-chat": 64000,
+        "deepseek-reasoner": 64000,
+        "default": 64000
     },
     "gemini": {
         "gemini-1.5-flash": 100000,
@@ -89,7 +89,11 @@ def count_tokens(text: str, model_type: str, model_name: str) -> int:
     """计算文本的token数量"""
     if not text:
         return 0
-        
+
+    if model_type == "deepseek":
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+
     if model_type == "openai":
         try:
             encoding = tiktoken.encoding_for_model(model_name)
