@@ -52,6 +52,7 @@ def chat():
         api_key = extras_json.get('api_key')
         base_url = extras_json.get('base_url')
         agency = extras_json.get('agency')
+        temperature = float(extras_json.get('temperature', 0.7))
         before_text = extras_json.get('before_text')
         context_key = extras_json.get('context_key', '')
         context_limit = int(extras_json.get('context_limit', 0))
@@ -146,6 +147,7 @@ def chat():
         "api_key": api_key,
         "base_url": base_url,
         "agency": agency,
+        "temperature": temperature,
         "context_limit": context_limit,
 
         "context_key": context_key,
@@ -215,7 +217,9 @@ def stream(msg_id, stream_key):
                 model_name=data["model_name"],
                 api_key=data["api_key"],
                 base_url=data["base_url"],
-                agency=data["agency"]
+                agency=data["agency"],
+                temperature=data["temperature"],
+                streaming=True,
             )
 
             # 前置上下文处理
@@ -407,6 +411,7 @@ def invoke():
     api_key = request.args.get('api_key') or request.form.get('api_key')
     base_url = request.args.get('base_url') or request.form.get('base_url')
     agency = request.args.get('agency') or request.form.get('agency')
+    temperature = float(request.args.get('temperature') or request.form.get('temperature') or 0.7)
     before_text = request.args.get('before_text') or request.form.get('before_text')
     context_key = request.args.get('context_key') or request.form.get('context_key')
     context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
@@ -431,6 +436,7 @@ def invoke():
         api_key=api_key,
         base_url=base_url,
         agency=agency,
+        temperature=temperature,
         streaming=False,
     )
 

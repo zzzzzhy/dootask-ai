@@ -15,8 +15,13 @@ import time
 import json
 import re
 
-def get_model_instance(model_type, model_name, api_key, base_url=None, agency=None, streaming=True):
+def get_model_instance(model_type, model_name, api_key, **kwargs):
     """根据模型类型返回对应的模型实例"""
+
+    base_url = kwargs.get("base_url", None)
+    agency = kwargs.get("agency", None)
+    temperature = kwargs.get("temperature", 0.7)
+    streaming = kwargs.get("streaming", True)
 
     model_configs = {
         "openai": (ChatOpenAI, {
@@ -57,7 +62,7 @@ def get_model_instance(model_type, model_name, api_key, base_url=None, agency=No
 
         common_params = {
             "model": model_name,
-            "temperature": 0.7,
+            "temperature": temperature,
             "streaming": streaming
         }
         config.update(common_params)

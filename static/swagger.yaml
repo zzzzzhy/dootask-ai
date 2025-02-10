@@ -59,13 +59,19 @@ paths:
           required: false
           schema:
             type: string
-          description: Optional base URL for OpenAI API (only works when model_type is openai)
+          description: Optional base URL for OpenAI API (only works when model_type is openai or deepseek)
         - name: agency
           in: query
           required: false
           schema:
             type: string
           description: Optional proxy server URL
+        - name: temperature
+          in: query
+          required: false
+          schema:
+            type: number
+          description: Optional temperature for AI response (default: 0.7)
         - name: context_key
           in: query
           required: false
@@ -223,8 +229,9 @@ paths:
             - system_message: Optional system prompt to set AI behavior
             - server_url: Server URL for API calls (required)
             - api_key: API key for authentication (required)
-            - base_url: Optional base URL for OpenAI API (only works when model_type is openai)
+            - base_url: Optional base URL for OpenAI API (only works when model_type is openai or deepseek)
             - agency: Optional proxy server URL
+            - temperature: Optional temperature for AI response (default: 0.7)
             - context_key: Custom context key (optional, auto-generated if empty)
             - before_text: Context to be prepended after the system prompt (optional, not saved in next context, context priority: custom context (message text) > system_message > before_text)
             - context_limit: Optional context limit (in tokens, e.g., 32000)

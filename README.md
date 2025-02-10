@@ -12,25 +12,29 @@ DooTask AI 是一个灵活的 AI 对话服务，支持多种 AI 模型，提供�
 
 2. **Anthropic Claude** (model_type: claude)
    - model_name: claude-3-5-sonnet-latest, claude-3-5-sonnet-20241022, claude-3-5-haiku-latest, claude-3-5-haiku-20241022, claude-3-opus-latest, claude-3-opus-20240229, claude-3-haiku-20240307, claude-2.1, claude-2.0
-   - 特点：注重安全性和可控性的对话模型
+   - 特点：强大的自然语言处理能力，擅长流畅对话和深度内容理解
 
-3. **Google Gemini** (model_type: gemini)
+3. **Deepseek** (model_type: deepseek)
+   - model_name: deepseek-chat, deepseek-reasoner
+   - 特点：高效精准的数据挖掘与分析，提供深度洞察和智能决策支持
+
+4. **Google Gemini** (model_type: gemini)
    - model_name: gemini-1.5-flash, gemini-1.5-flash-8b, gemini-1.5-pro, gemini-1.0-pro
    - 特点：支持多模态输入的新一代 AI 模型
 
-4. **智谱 AI** (model_type: zhipu)
+5. **智谱 AI** (model_type: zhipu)
    - model_name: glm-4, glm-4-plus, glm-4-air, glm-4-airx, glm-4-long, glm-4-flash, glm-4v, glm-4v-plus, glm-3-turbo
    - 特点：专注中文处理的大语言模型
 
-5. **通义千问** (model_type: qwen)
+6. **通义千问** (model_type: qwen)
    - model_name: qwen-turbo, qwen-turbo-latest, qwen-plus, qwen-plus-latest, qwen-max, qwen-max-latest, qwen-long
    - 特点：阿里巴巴开发的多语言模型
 
-6. **百度文心一言** (model_type: wenxin)
+7. **百度文心一言** (model_type: wenxin)
    - model_name: ernie-4.0-8k, ernie-4.0-8k-latest, ernie-4.0-turbo-128k, ernie-4.0-turbo-8k, ernie-3.5-128k, ernie-3.5-8k, ernie-speed-128k, ernie-speed-8k, ernie-lite-8k, ernie-tiny-8k
    - 特点：擅长中文理解和生成的模型
 
-7. **Cohere** (model_type: cohere)
+8. **Cohere** (model_type: cohere)
    - model_name: command-r
    - 特点：适用于文本生成、分类和搜索等任务
 
@@ -161,8 +165,9 @@ GET /chat?text=hello&token=xxx&dialog_id=123&msg_uid=456&bot_uid=789&version=1.0
   - `system_message`: 系统提示词（可选）
   - `server_url`: 服务器地址
   - `api_key`: API密钥
-  - `base_url`: 基础URL（可选，仅在 model_type 为 openai 时生效）
+  - `base_url`: 基础URL（可选，仅在 model_type 为 openai、deepseek 时生效）
   - `agency`: 代理服务器（可选）
+  - `temperature`: 温度（可选，默认为 0.7）
   - `context_key`: 自定义上下文键（可选，留空自动生成）
   - `before_text`: 前置上下文，在系统提示词之后（可选，不保存在下次上下文，上下文优先级：自定义上下文（对话内容） > 系统提示词 > 前置上下文）
   - `context_limit`: 上下文限制（可选）
@@ -191,8 +196,9 @@ GET /invoke?text=hello&model_type=openai&model_name=gpt-4&api_key=your-api-key&s
 - `model_type`: 模型类型（可选，默认为 openai）
 - `model_name`: 模型名称（可选，默认为 gpt-3.5-turbo）
 - `system_message`: 系统提示词（可选）
-- `base_url`: 基础URL（可选，仅在 model_type 为 openai 时生效）
+- `base_url`: 基础URL（可选，仅在 model_type 为 openai、deepseek 时生效）
 - `agency`: 代理服务器（可选）
+- `temperature`: 温度（可选，默认为 0.7）
 - `context_key`: 上下文键（可选）
 - `before_text`: 前置上下文（可选）
 - `context_limit`: 上下文限制（可选）
