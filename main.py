@@ -287,16 +287,15 @@ def stream(msg_id, stream_key):
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
                         last_cache_time = current_time                    
 
-            response_cache = context_filter(response)
             # 更新上下文
             redis_manager.extend_contexts(data["context_key"], [
                 ("human", data["text"]),
-                ("assistant", response_cache)
+                ("assistant", context_filter(response))
             ], data["model_type"], data["model_name"], data["context_limit"])
 
             # 检查是否包含结束对话标记
-            if data.get("chat_state_key") and END_CONVERSATION_MARK in response_cache:
-                response_cache = filter_end_flag(response_cache, END_CONVERSATION_MARK)
+            if data.get("chat_state_key") and END_CONVERSATION_MARK in response:
+                response = filter_end_flag(response, END_CONVERSATION_MARK)
                 redis_manager.delete_cache(data["chat_state_key"])
                 redis_manager.delete_context(data["context_key"])
                 is_end = True            
@@ -476,10 +475,9 @@ def invoke():
     try:
         response = model.invoke(final_context)
         if context_key:
-            response_cache = context_filter(response.content)
             redis_manager.extend_contexts(f"invoke_{context_key}", [
                 ("human", text),
-                ("assistant", response_cache)
+                ("assistant", context_filter(response.content))
             ], model_type, model_name, context_limit)
         return jsonify({
             "code": 200, 
