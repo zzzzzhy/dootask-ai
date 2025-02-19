@@ -8,7 +8,9 @@ langchain-anthropic
 langchain-community
 langchain-deepseek-official
 langchain-google-genai
+langchain-xai
 langchain-openai
+langchain-ollama
 langchain-text-splitters
 pyjwt
 qianfan

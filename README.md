@@ -7,35 +7,43 @@ DooTask AI 是一个灵活的 AI 对话服务，支持多种 AI 模型，提供�
 ### 支持的 AI 模型
 
 1. **OpenAI GPT** (model_type: openai)
-   - model_name: gpt-4, gpt-4-turbo, gpt-4o, gpt-4o-mini, gpt-3.5-turbo, gpt-3.5-turbo-16k, gpt-3.5-turbo-0125, gpt-3.5-turbo-1106
+   - model_name: gpt-4o ...
    - 特点：强大的通用语言理解和生成能力
 
 2. **Anthropic Claude** (model_type: claude)
-   - model_name: claude-3-5-sonnet-latest, claude-3-5-sonnet-20241022, claude-3-5-haiku-latest, claude-3-5-haiku-20241022, claude-3-opus-latest, claude-3-opus-20240229, claude-3-haiku-20240307, claude-2.1, claude-2.0
+   - model_name: claude-3-5-sonnet-latest ...
    - 特点：强大的自然语言处理能力，擅长流畅对话和深度内容理解
 
 3. **Deepseek** (model_type: deepseek)
-   - model_name: deepseek-chat, deepseek-reasoner
+   - model_name: deepseek-reasoner ...
    - 特点：高效精准的数据挖掘与分析，提供深度洞察和智能决策支持
 
 4. **Google Gemini** (model_type: gemini)
-   - model_name: gemini-1.5-flash, gemini-1.5-flash-8b, gemini-1.5-pro, gemini-1.0-pro
+   - model_name: gemini-1.5-pro ...
    - 特点：支持多模态输入的新一代 AI 模型
 
 5. **智谱 AI** (model_type: zhipu)
-   - model_name: glm-4, glm-4-plus, glm-4-air, glm-4-airx, glm-4-long, glm-4-flash, glm-4v, glm-4v-plus, glm-3-turbo
+   - model_name: glm-4 ...
    - 特点：专注中文处理的大语言模型
 
 6. **通义千问** (model_type: qwen)
-   - model_name: qwen-turbo, qwen-turbo-latest, qwen-plus, qwen-plus-latest, qwen-max, qwen-max-latest, qwen-long
+   - model_name: qwen-turbo ...
    - 特点：阿里巴巴开发的多语言模型
 
 7. **百度文心一言** (model_type: wenxin)
-   - model_name: ernie-4.0-8k, ernie-4.0-8k-latest, ernie-4.0-turbo-128k, ernie-4.0-turbo-8k, ernie-3.5-128k, ernie-3.5-8k, ernie-speed-128k, ernie-speed-8k, ernie-lite-8k, ernie-tiny-8k
+   - model_name: ernie-4.0-8k ...
    - 特点：擅长中文理解和生成的模型
 
 8. **Cohere** (model_type: cohere)
-   - model_name: command-r
+   - model_name: command-r ...
+   - 特点：适用于文本生成、分类和搜索等任务
+
+9. **Ollama** (model_type: ollama)
+   - model_name: ollama-3.5-8k ...
+   - 特点：适用于文本生成、分类和搜索等任务
+
+10. **XAI** (model_type: grok or xai)
+   - model_name: grok-2 ...
    - 特点：适用于文本生成、分类和搜索等任务
 
 ### 核心功能

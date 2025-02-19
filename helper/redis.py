@@ -62,6 +62,21 @@ CONTEXT_LIMITS = {
         "qwen-turbo": 8000,
         "qwen-turbo-latest": 8000,
         "default": 8000
+    },
+    "ollama": {
+        "ollama-3.5-8k": 8000,
+        "default": 8000
+    },
+    "grok": {
+        "grok-2-vision-1212": 32000,
+        "grok-2-vision": 32000,
+        "grok-2-vision-latest": 32000,
+        "grok-2-1212": 128000,
+        "grok-2": 128000,
+        "grok-2-latest": 128000,
+        "grok-vision-beta": 8000,
+        "grok-beta": 128000,
+        "default": 8000
     }
 }
 

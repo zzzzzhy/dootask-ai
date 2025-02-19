@@ -1,6 +1,8 @@
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
+from langchain_xai import ChatXAI
 from langchain_community.chat_models import (
     ChatZhipuAI,
     ChatTongyi,
@@ -23,6 +25,9 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
     temperature = kwargs.get("temperature", 0.7)
     streaming = kwargs.get("streaming", True)
 
+    if model_type == "xai":
+        model_type = "grok"
+
     model_configs = {
         "openai": (ChatOpenAI, {
             "openai_api_key": api_key,
@@ -38,6 +43,8 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
         "qwen": (ChatTongyi, None),
         "wenxin": (QianfanChatEndpoint, None),
         "cohere": (ChatCohere, None),
+        "ollama": (ChatOllama, None),
+        "grok": (ChatXAI, None),
     }
 
     if agency:
