@@ -59,7 +59,7 @@ paths:
           required: false
           schema:
             type: string
-          description: Optional base URL for OpenAI API (only works when model_type is openai or deepseek)
+          description: Optional base URL
         - name: agency
           in: query
           required: false
@@ -229,7 +229,7 @@ paths:
             - system_message: Optional system prompt to set AI behavior
             - server_url: Server URL for API calls (required)
             - api_key: API key for authentication (required)
-            - base_url: Optional base URL for OpenAI API (only works when model_type is openai or deepseek)
+            - base_url: Optional base URL
             - agency: Optional proxy server URL
             - temperature: Optional temperature for AI response (default: 0.7)
             - context_key: Custom context key (optional, auto-generated if empty)
