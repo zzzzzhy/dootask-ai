@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag, context_filter
+from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag, context_replace, context_filter
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
 from helper.thread_pool import DynamicThreadPoolExecutor
@@ -271,6 +271,7 @@ def stream(msg_id, stream_key):
                         response += "::: reasoning\n"
                         has_reasoning = True
                     response += chunk.reasoning_content
+                    response = context_replace(response)
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
@@ -282,6 +283,7 @@ def stream(msg_id, stream_key):
                         has_reasoning = False
                     is_response = True
                     response += chunk.content
+                    response = context_replace(response)
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
@@ -474,15 +476,16 @@ def invoke():
     # 开始请求直接响应
     try:
         response = model.invoke(final_context)
+        resContent = context_replace(response.content)
         if context_key:
             redis_manager.extend_contexts(f"invoke_{context_key}", [
                 ("human", text),
-                ("assistant", context_filter(response.content))
+                ("assistant", context_filter(resContent))
             ], model_type, model_name, context_limit)
         return jsonify({
             "code": 200, 
             "data": {
-                "content": response.content,
+                "content": resContent,
                 "usage": {
                     "total_tokens": response.usage_metadata.get("total_tokens", 0),
                     "prompt_tokens": response.usage_metadata.get("input_tokens", 0),

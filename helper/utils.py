@@ -17,6 +17,11 @@ import time
 import json
 import re
 
+# 预编译正则表达式
+_THINK_START_PATTERN = re.compile(r'<think>\s*')
+_THINK_END_PATTERN = re.compile(r'\s*</think>')
+_REASONING_PATTERN = re.compile(r'::: reasoning\n.*?:::', re.DOTALL)
+
 def get_model_instance(model_type, model_name, api_key, **kwargs):
     """根据模型类型返回对应的模型实例"""
 
@@ -175,8 +180,15 @@ def json_error(error):
 def json_empty():
     return json.dumps({})
 
+def context_replace(context):
+    # 将 <think>内容</think> 替换为 ::: reasoning 内容 :::
+    if '<think' in context or '</think' in context:
+        context = _THINK_START_PATTERN.sub('::: reasoning\n', context)
+        context = _THINK_END_PATTERN.sub('\n:::', context)
+    return context
+
 def context_filter(context):
+    # 将 ::: reasoning 内容 ::: 去除
     if "::: reasoning\n" in context:
-        # response 去除 reasoning
-        context = re.sub(r'::: reasoning\n.*?:::', '', context, flags=re.DOTALL)
+        context = _REASONING_PATTERN.sub('', context)
     return context
