@@ -280,7 +280,13 @@ def stream(msg_id, stream_key):
 
             # 开始请求流式响应
             for chunk in model.stream(final_context):
-                if hasattr(chunk, 'type') and chunk.type == 'thinking':
+                if hasattr(chunk, 'content') and isinstance(chunk.content, list):
+                    if chunk.content:
+                        chunk = chunk.content[0]
+                    else:
+                        continue
+
+                if hasattr(chunk, 'type') and chunk.type == 'thinking' and not is_response:
                     if not has_reasoning:
                         response += "::: reasoning\n"
                         has_reasoning = True
@@ -290,19 +296,9 @@ def stream(msg_id, stream_key):
                     if current_time - last_cache_time >= cache_interval:
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
                         last_cache_time = current_time  
-
-                if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content and not is_response:
-                    if not has_reasoning:
-                        response += "::: reasoning\n"
-                        has_reasoning = True
-                    response += chunk.reasoning_content
-                    response = replace_think_content(response)
-                    current_time = time.time()
-                    if current_time - last_cache_time >= cache_interval:
-                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
-                        last_cache_time = current_time  
+                    continue
                         
-                if chunk.content:
+                if hasattr(chunk, 'content') and chunk.content:
                     if has_reasoning:
                         response += "\n:::\n\n"
                         has_reasoning = False
