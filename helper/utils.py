@@ -180,15 +180,57 @@ def json_error(error):
 def json_empty():
     return json.dumps({})
 
-def context_replace(context):
+def replace_think_content(text):
     # 将 <think>内容</think> 替换为 ::: reasoning 内容 :::
-    if '<think' in context or '</think' in context:
-        context = _THINK_START_PATTERN.sub('::: reasoning\n', context)
-        context = _THINK_END_PATTERN.sub('\n:::', context)
-    return context
+    if '<think' in text or '</think' in text:
+        text = _THINK_START_PATTERN.sub('::: reasoning\n', text)
+        text = _THINK_END_PATTERN.sub('\n:::', text)
+    return text
 
-def context_filter(context):
+def remove_reasoning_content(text):
     # 将 ::: reasoning 内容 ::: 去除
-    if "::: reasoning\n" in context:
-        context = _REASONING_PATTERN.sub('', context)
-    return context
+    if "::: reasoning\n" in text:
+        text = _REASONING_PATTERN.sub('', text)
+    return text
+
+def process_html_content(text):
+    """
+    处理HTML内容，替换图片标签
+    :param text: 原始文本
+    :return: 处理后的文本
+    """
+    if not text:
+        return text
+        
+    # 图片计数器
+    img_count = 0
+    
+    # 处理含有alt属性的图片标签
+    def replace_img_with_alt(match):
+        nonlocal img_count
+        img_count += 1
+        src = match.group(1) if match.group(1) else ""
+        alt = match.group(2) if match.group(2) else ""
+        
+        if alt:
+            return f"[图片{img_count}：{alt}]"
+        elif src:
+            return f"[图片{img_count}：{src}]"
+        else:
+            return f"[图片{img_count}]"
+    
+    # 处理其他图片标签
+    def replace_img_without_alt(match):
+        nonlocal img_count
+        img_count += 1
+        return f"[图片{img_count}]"
+    
+    # 先处理有alt属性的图片
+    img_alt_pattern = re.compile(r'<img\s+[^>]*(?:src="([^"]*)")?\s*[^>]*(?:alt="([^"]*)")?\s*[^>]*>', re.IGNORECASE)
+    text = img_alt_pattern.sub(replace_img_with_alt, text)
+    
+    # 处理剩余的图片标签
+    img_pattern = re.compile(r'<img\s+[^>]*>', re.IGNORECASE)
+    text = img_pattern.sub(replace_img_without_alt, text)
+    
+    return text
