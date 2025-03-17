@@ -28,6 +28,8 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
     base_url = kwargs.get("base_url", None)
     agency = kwargs.get("agency", None)
     temperature = kwargs.get("temperature", 0.7)
+    max_tokens = kwargs.get("max_tokens", 0)
+    thinking = kwargs.get("thinking", 0)
     streaming = kwargs.get("streaming", True)
 
     if model_type == "xai":
@@ -71,6 +73,12 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
 
         if base_url:
             config.update({"base_url": base_url})
+
+        if max_tokens > 0:
+            config.update({"max_tokens": max_tokens})
+
+        if thinking > 0:
+            config.update({"thinking": {"type": "enabled", "budget_tokens": 2000 if thinking == 1 else thinking}})
 
         common_params = {
             "model": model_name,

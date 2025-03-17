@@ -53,6 +53,8 @@ def chat():
         base_url = extras_json.get('base_url')
         agency = extras_json.get('agency')
         temperature = float(extras_json.get('temperature', 0.7))
+        max_tokens = int(extras_json.get('max_tokens', 0))
+        thinking = int(extras_json.get('thinking', 0))
         before_text = extras_json.get('before_text')
         context_key = extras_json.get('context_key', '')
         context_limit = int(extras_json.get('context_limit', 0))
@@ -152,6 +154,8 @@ def chat():
         "base_url": base_url,
         "agency": agency,
         "temperature": temperature,
+        "max_tokens": max_tokens,
+        "thinking": thinking,
         "context_limit": context_limit,
 
         "context_key": context_key,
@@ -223,6 +227,8 @@ def stream(msg_id, stream_key):
                 base_url=data["base_url"],
                 agency=data["agency"],
                 temperature=data["temperature"],
+                max_tokens=data["max_tokens"],
+                thinking=data["thinking"],
                 streaming=True,
             )
 
@@ -274,6 +280,17 @@ def stream(msg_id, stream_key):
 
             # 开始请求流式响应
             for chunk in model.stream(final_context):
+                if hasattr(chunk, 'type') and chunk.type == 'thinking':
+                    if not has_reasoning:
+                        response += "::: reasoning\n"
+                        has_reasoning = True
+                    response += chunk.thinking
+                    response = replace_think_content(response)
+                    current_time = time.time()
+                    if current_time - last_cache_time >= cache_interval:
+                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                        last_cache_time = current_time  
+
                 if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content and not is_response:
                     if not has_reasoning:
                         response += "::: reasoning\n"
@@ -421,6 +438,8 @@ def invoke():
     base_url = request.args.get('base_url') or request.form.get('base_url')
     agency = request.args.get('agency') or request.form.get('agency')
     temperature = float(request.args.get('temperature') or request.form.get('temperature') or 0.7)
+    max_tokens = int(request.args.get('max_tokens') or request.form.get('max_tokens') or 0)
+    thinking = int(request.args.get('thinking') or request.form.get('thinking') or 0)
     before_text = request.args.get('before_text') or request.form.get('before_text')
     context_key = request.args.get('context_key') or request.form.get('context_key')
     context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
@@ -446,6 +465,8 @@ def invoke():
         base_url=base_url,
         agency=agency,
         temperature=temperature,
+        max_tokens=max_tokens,
+        thinking=thinking,
         streaming=False,
     )
 

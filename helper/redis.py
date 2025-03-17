@@ -77,6 +77,13 @@ def count_tokens(text: str, model_type: str, model_name: str) -> int:
     encoding = tiktoken.get_encoding(encoding_name)
     return len(encoding.encode(text))
 
+def model_limit(model_type: str, model_name: str) -> int:
+    """获取模型token限制"""
+    if model_type in CONTEXT_LIMITS:
+        model_limits = CONTEXT_LIMITS[model_type]
+        return model_limits.get(model_name, model_limits.get('default', 4096))
+    return 4096
+
 def handle_context_limits(pre_context: List[Tuple[str, str]], middle_context: List[Tuple[str, str]], end_context: List[Tuple[str, str]], model_type: str = None, model_name: str = None, custom_limit: int = None) -> List[Tuple[str, str]]:
     """处理上下文，确保不超过模型token限制"""
     all_context = pre_context + middle_context + end_context
@@ -87,10 +94,7 @@ def handle_context_limits(pre_context: List[Tuple[str, str]], middle_context: Li
     if custom_limit and custom_limit > 0:
         token_limit = custom_limit
     else:
-        token_limit = 4096  # 默认限制
-        if model_type in CONTEXT_LIMITS:
-            model_limits = CONTEXT_LIMITS[model_type]
-            token_limit = model_limits.get(model_name, model_limits.get('default', 4096))
+        token_limit = model_limit(model_type, model_name)
     
     # 按优先级处理上下文
     result = []
