@@ -68,7 +68,8 @@ class DeepseekChatOpenAI(ChatOpenAI):
             if reasoning:
                 yield ChatGenerationChunk(
                     message=AIMessageChunk(
-                        content=[{"type": "thinking", "thinking": reasoning}]
+                        content="",
+                        reasoning_content=reasoning
                     )
                 )
 
@@ -118,7 +119,8 @@ class DeepseekChatOpenAI(ChatOpenAI):
             if reasoning:
                 yield ChatGenerationChunk(
                     message=AIMessageChunk(
-                        content=[{"type": "thinking", "thinking": reasoning}]
+                        content="",
+                        reasoning_content=reasoning
                     )
                 )
 
@@ -142,7 +144,7 @@ class DeepseekChatOpenAI(ChatOpenAI):
                     )
             return AIMessage(
                 content="".join(combined_content),
-                thinking="".join(combined_reasoning) if combined_reasoning else ""
+                reasoning_content="".join(combined_reasoning) if combined_reasoning else ""
             )
 
         return asyncio.run(_ainvoke())

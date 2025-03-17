@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
 from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag, replace_think_content, remove_reasoning_content, process_html_content
@@ -281,22 +282,29 @@ def stream(msg_id, stream_key):
             # 开始请求流式响应
             for chunk in model.stream(final_context):
                 if hasattr(chunk, 'content') and isinstance(chunk.content, list):
+                    isContinue = True
                     if chunk.content:
-                        chunk = chunk.content[0]
-                    else:
+                        chunk = SimpleNamespace(**chunk.content[0])
+                        if hasattr(chunk, 'type'):
+                            if chunk.type == 'thinking' and hasattr(chunk, 'thinking'):    
+                                chunk = SimpleNamespace(reasoning_content=chunk.thinking)
+                                isContinue = False
+                            elif chunk.type == 'text' and hasattr(chunk, 'text'):
+                                chunk = SimpleNamespace(content=chunk.text)
+                                isContinue = False
+                    if isContinue:
                         continue
 
-                if hasattr(chunk, 'type') and chunk.type == 'thinking' and not is_response:
+                if hasattr(chunk, 'reasoning_content') and chunk.reasoning_content and not is_response:
                     if not has_reasoning:
                         response += "::: reasoning\n"
                         has_reasoning = True
-                    response += chunk.thinking
+                    response += chunk.reasoning_content
                     response = replace_think_content(response)
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:
                         redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
                         last_cache_time = current_time  
-                    continue
                         
                 if hasattr(chunk, 'content') and chunk.content:
                     if has_reasoning:
@@ -311,10 +319,11 @@ def stream(msg_id, stream_key):
                         last_cache_time = current_time                    
 
             # 更新上下文
-            redis_manager.extend_contexts(data["context_key"], [
-                ("human", data["text"]),
-                ("assistant", remove_reasoning_content(response))
-            ], data["model_type"], data["model_name"], data["context_limit"])
+            if response:    
+                redis_manager.extend_contexts(data["context_key"], [
+                    ("human", data["text"]),
+                    ("assistant", remove_reasoning_content(response))
+                ], data["model_type"], data["model_name"], data["context_limit"])
 
             # 检查是否包含结束对话标记
             if data.get("chat_state_key") and END_CONVERSATION_MARK in response:
