@@ -12,113 +12,70 @@ tiktoken.get_encoding("cl100k_base")
 # 定义模型的上下文限制（token数）
 CONTEXT_LIMITS = {
     "openai": {
-        "gpt-4": 6000,
-        "gpt-4-turbo": 32000,
-        "gpt-4o": 6000,
-        "gpt-4o-mini": 6000,
-        "gpt-3.5-turbo": 3000,
-        "gpt-3.5-turbo-16k": 16000,
-        "gpt-3.5-turbo-0125": 3000,
-        "gpt-3.5-turbo-1106": 3000,
-        "default": 3000
+        "gpt-4": 8192,
+        "gpt-4-turbo": 128000,
+        "gpt-4o": 128000,
+        "gpt-4o-mini": 16384,
+        "gpt-3.5-turbo": 4096,
+        "gpt-3.5-turbo-16k": 16384,
+        "gpt-3.5-turbo-0125": 4096,
+        "gpt-3.5-turbo-1106": 4096,
+        "default": 4096
     },
     "claude": {
         "claude-3-5-sonnet-latest": 200000,
-        "claude-3-5-sonnet-20241022": 200000,
         "claude-3-5-haiku-latest": 200000,
-        "claude-3-5-haiku-20241022": 200000,
         "claude-3-5-opus-latest": 200000,
-        "claude-3-5-opus-20240229": 200000,
-        "claude-3-5-haiku-20240307": 200000,
         "claude-2.1": 100000,
-        "claude-2.0": 100000,
-        "default": 100000
+        "default": 200000
     },
     "deepseek": {
-        "deepseek-chat": 64000,
-        "deepseek-reasoner": 64000,
-        "default": 64000
+        "deepseek-chat": 32768,
+        "deepseek-reasoner": 32768,
+        "default": 32768
     },
     "gemini": {
-        "gemini-1.5-flash": 100000,
-        "gemini-1.5-flash-8b": 100000,
-        "gemini-1.5-pro": 100000,
-        "gemini-1.0-pro": 100000,
-        "default": 100000
+        "gemini-1.5-flash": 1000000,
+        "gemini-1.5-pro": 1000000,
+        "default": 1000000
     },
     "zhipu": {
-        "glm-4": 32000,
-        "glm-4-plus": 32000,
-        "glm-4-air": 32000,
-        "glm-4-airx": 32000,
+        "glm-4": 128000,
         "glm-4-long": 128000,
-        "glm-4-flash": 32000,
-        "glm-4v": 32000,
-        "glm-4v-plus": 32000,
-        "glm-3-turbo": 8000,
-        "default": 8000
+        "default": 128000
     },
     "qwen": {
-        "qwen-turbo": 8000,
-        "qwen-turbo-latest": 8000,
-        "default": 8000
-    },
-    "ollama": {
-        "ollama-3.5-8k": 8000,
-        "default": 8000
+        "qwen-turbo": 32000,
+        "default": 32000
     },
     "grok": {
-        "grok-2-vision-1212": 32000,
-        "grok-2-vision": 32000,
-        "grok-2-vision-latest": 32000,
-        "grok-2-1212": 128000,
         "grok-2": 128000,
-        "grok-2-latest": 128000,
-        "grok-vision-beta": 8000,
-        "grok-beta": 128000,
-        "default": 8000
+        "default": 128000
     }
 }
-
-def estimate_tokens(text: str) -> int:
-    """
-    估算文本的token数量（适用于非OpenAI模型）
-    基于以下规则：
-    1. 中文字符算1个token
-    2. 英文单词算1个token
-    3. 标点符号算0.5个token
-    4. 数字序列算1个token
-    """
-    if not text:
-        return 0
-        
-    # 分离中文字符、英文单词、数字
-    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
-    english_words = len(re.findall(r'[a-zA-Z]+', text))
-    numbers = len(re.findall(r'\d+', text))
-    punctuation = len(re.findall(r'[^\w\s]', text))
-    
-    return chinese_chars + english_words + numbers + (punctuation // 2)
 
 def count_tokens(text: str, model_type: str, model_name: str) -> int:
     """计算文本的token数量"""
     if not text:
         return 0
 
-    if model_type == "deepseek":
-        encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
-
+    # 默认使用cl100k_base编码
+    encoding_name = "cl100k_base"
+    
+    # 根据模型类型选择合适的编码
     if model_type == "openai":
         try:
+            # 对OpenAI模型尝试获取特定的编码
             encoding = tiktoken.encoding_for_model(model_name)
             return len(encoding.encode(text))
         except KeyError:
-            encoding = tiktoken.get_encoding("cl100k_base")
-            return len(encoding.encode(text))
+            # 如果失败，使用默认编码
+            pass
     
-    # 对于其他模型使用估算方法
-    return estimate_tokens(text)
+    # 对于deepseek模型和所有其他情况（包括OpenAI模型编码获取失败）
+    # 使用默认的cl100k_base编码
+    encoding = tiktoken.get_encoding(encoding_name)
+    return len(encoding.encode(text))
 
 def handle_context_limits(pre_context: List[Tuple[str, str]], middle_context: List[Tuple[str, str]], end_context: List[Tuple[str, str]], model_type: str = None, model_name: str = None, custom_limit: int = None) -> List[Tuple[str, str]]:
     """处理上下文，确保不超过模型token限制"""
@@ -130,10 +87,10 @@ def handle_context_limits(pre_context: List[Tuple[str, str]], middle_context: Li
     if custom_limit and custom_limit > 0:
         token_limit = custom_limit
     else:
-        token_limit = 2000  # 默认限制
+        token_limit = 4096  # 默认限制
         if model_type in CONTEXT_LIMITS:
             model_limits = CONTEXT_LIMITS[model_type]
-            token_limit = model_limits.get(model_name, model_limits.get('default', 2000))
+            token_limit = model_limits.get(model_name, model_limits.get('default', 4096))
     
     # 按优先级处理上下文
     result = []

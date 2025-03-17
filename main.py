@@ -256,6 +256,10 @@ def stream(msg_id, stream_key):
                 custom_limit=data["context_limit"]
             )
 
+            # 检查上下文是否超限
+            if not final_context:
+                raise Exception("Context limit exceeded")
+
             # 缓存配置
             cache_interval = 0.1  # 缓存间隔
             last_cache_time = time.time()
