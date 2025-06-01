@@ -582,8 +582,14 @@ def analyze_image():
         # print(result)
         data = parse_result(result)
         names_list = list(find_names(data,"name"))
-        result = search_tool.search_by_name(names_list, top_k=3, threshold=0.75)
-        return result
+        similar_result = search_tool.search_by_name(names_list, top_k=3, threshold=0.75)
+        return jsonify({
+            "code": 200,
+            "data": {
+                "result": data,
+                "search_results": similar_result
+            }
+        })
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)})
 
