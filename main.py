@@ -176,6 +176,43 @@ def chat():
     # 返回成功响应
     return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
 
+# 判断是否在聊天状态
+@app.route('/chat_state', methods=['POST', 'GET'])
+def chat_state():
+    # 获取必要参数
+    dialog_id = int(request.args.get('dialog_id') or request.form.get('dialog_id') or 0)
+    dialog_type = request.args.get('dialog_type') or request.form.get('dialog_type')
+    extras = request.args.get('extras') or request.form.get('extras') or '{}'
+    
+    # 检查必要参数
+    if not dialog_id:
+        return jsonify({"code": 400, "error": "Parameter error"})
+
+    # 如果不是群聊，直接返回在聊天状态中
+    if dialog_type != 'group':
+        return jsonify({"code": 200, "data": {"desc": "In chat state"}})
+    
+    # 解析 extras 参数获取模型信息
+    try:
+        extras_json = json.loads(extras)
+        model_type = extras_json.get('model_type', 'openai')
+        model_name = extras_json.get('model_name', 'gpt-3.5-turbo')
+        context_key = extras_json.get('context_key', '')
+    except json.JSONDecodeError:
+        return jsonify({"code": 400, "error": "Invalid extras parameter"})
+    
+    # 定义上下文键和对话状态键（与 /chat 接口保持一致）
+    context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
+    chat_state_key = f"chat_state_{context_key}"
+    
+    # 检查是否在对话状态中
+    in_chat_state = bool(redis_manager.get_cache(chat_state_key))
+    
+    if in_chat_state:
+        return jsonify({"code": 200, "data": {"desc": "In chat state"}})
+    else:
+        return jsonify({"code": 400, "error": "Not in chat state"})
+
 # 处理流式响应
 @app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
 def stream(msg_id, stream_key):
