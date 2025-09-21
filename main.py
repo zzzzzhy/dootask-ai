@@ -1,11 +1,11 @@
 from types import SimpleNamespace
 from flask import Flask, request, jsonify, Response, stream_with_context
 from flask_cors import CORS
-from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, filter_end_flag, replace_think_content, remove_reasoning_content, process_html_content
+from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, replace_think_content, remove_reasoning_content, process_html_content
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
 from helper.thread_pool import DynamicThreadPoolExecutor
-from helper.config import SERVER_PORT, CLEAR_COMMANDS, BYE_WORDS, END_CONVERSATION_MARK, STREAM_TIMEOUT
+from helper.config import SERVER_PORT, CLEAR_COMMANDS, STREAM_TIMEOUT
 import json
 import time
 import random
@@ -47,7 +47,7 @@ def chat():
     try:
         extras_json = json.loads(extras)
         model_type = extras_json.get('model_type', 'openai')
-        model_name = extras_json.get('model_name', 'gpt-3.5-turbo')
+        model_name = extras_json.get('model_name', 'gpt-5-nano')
         system_message = extras_json.get('system_message')
         server_url = extras_json.get('server_url')
         api_key = extras_json.get('api_key')
@@ -57,6 +57,7 @@ def chat():
         max_tokens = int(extras_json.get('max_tokens', 0))
         thinking = int(extras_json.get('thinking', 0))
         before_text = extras_json.get('before_text')
+        before_clear = int(extras_json.get('before_clear', 0))
         context_key = extras_json.get('context_key', '')
         context_limit = int(extras_json.get('context_limit', 0))
     except json.JSONDecodeError:
@@ -81,34 +82,6 @@ def chat():
     # 定义上下文键
     context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
 
-    # 如果是群里的消息
-    chat_state_key = ''
-    if dialog_type == 'group':
-        # 定义对话状态键
-        chat_state_key = f"chat_state_{context_key}"
-
-        # 本地判断再见
-        if text in BYE_WORDS:
-            if redis_manager.get_cache(chat_state_key):
-                redis_manager.delete_cache(chat_state_key)
-                redis_manager.delete_context(context_key)
-                request_client.call({
-                    "content": '[{"content":"再见"}]',
-                    "silence": "yes",
-                }, action='template')   
-            return jsonify({"code": 200, "data": {"desc": "Bye"}})
-        
-        # 如果是@消息，开启对话状态
-        if mention:
-            redis_manager.set_cache(chat_state_key, "active", ex=86400)
-        # 如果没有@且不在对话状态中，不回复
-        elif not redis_manager.get_cache(chat_state_key):
-            return jsonify({"code": 200, "data": {"desc": "Not in conversation state"}})
-        
-        # 添加结束对话提示到系统消息
-        end_prompt = f"如果你判断我想要结束对话（比如说再见、谢谢、不打扰了等），请在回复末尾添加标记：{END_CONVERSATION_MARK}。"
-        system_message = f"{system_message}\n\n{end_prompt}" if system_message else end_prompt
-    
     # 如果是清空上下文的命令
     if text in CLEAR_COMMANDS:
         redis_manager.delete_context(context_key)
@@ -119,6 +92,10 @@ def chat():
             "source": "ai",
         }, action='notice')
         return jsonify({"code": 200, "data": {"desc": "Context cleared"}})
+
+    # 如果需要在请求前清空上下文
+    if before_clear:
+        redis_manager.delete_context(context_key)
 
     # 创建消息
     send_id = request_client.call({
@@ -145,7 +122,6 @@ def chat():
         "version": version,
 
         "before_text": before_text,
-        "chat_state_key": chat_state_key,
     
         "model_type": model_type,
         "model_name": model_name,
@@ -175,43 +151,6 @@ def chat():
 
     # 返回成功响应
     return jsonify({"code": 200, "data": {"id": send_id, "key": stream_key}})
-
-# 判断是否在聊天状态
-@app.route('/chat_state', methods=['POST', 'GET'])
-def chat_state():
-    # 获取必要参数
-    dialog_id = int(request.args.get('dialog_id') or request.form.get('dialog_id') or 0)
-    dialog_type = request.args.get('dialog_type') or request.form.get('dialog_type')
-    extras = request.args.get('extras') or request.form.get('extras') or '{}'
-    
-    # 检查必要参数
-    if not dialog_id:
-        return jsonify({"code": 400, "error": "Parameter error"})
-
-    # 如果不是群聊，直接返回在聊天状态中
-    if dialog_type != 'group':
-        return jsonify({"code": 200, "data": {"desc": "In chat state"}})
-    
-    # 解析 extras 参数获取模型信息
-    try:
-        extras_json = json.loads(extras)
-        model_type = extras_json.get('model_type', 'openai')
-        model_name = extras_json.get('model_name', 'gpt-3.5-turbo')
-        context_key = extras_json.get('context_key', '')
-    except json.JSONDecodeError:
-        return jsonify({"code": 400, "error": "Invalid extras parameter"})
-    
-    # 定义上下文键和对话状态键（与 /chat 接口保持一致）
-    context_key = f"{model_type}_{model_name}_{dialog_id}_{context_key}"
-    chat_state_key = f"chat_state_{context_key}"
-    
-    # 检查是否在对话状态中
-    in_chat_state = bool(redis_manager.get_cache(chat_state_key))
-    
-    if in_chat_state:
-        return jsonify({"code": 200, "data": {"desc": "In chat state"}})
-    else:
-        return jsonify({"code": 400, "error": "Not in chat state"})
 
 # 处理流式响应
 @app.route('/stream/<msg_id>/<stream_key>', methods=['GET'])
@@ -250,7 +189,6 @@ def stream(msg_id, stream_key):
         流式生成响应
         """
 
-        is_end = False
         response = ""
         try:
             # 更新数据状态
@@ -340,7 +278,7 @@ def stream(msg_id, stream_key):
                     response = replace_think_content(response)
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:
-                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                        redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
                         last_cache_time = current_time  
                         
                 if hasattr(chunk, 'content') and chunk.content:
@@ -352,7 +290,7 @@ def stream(msg_id, stream_key):
                     response = replace_think_content(response)
                     current_time = time.time()
                     if current_time - last_cache_time >= cache_interval:
-                        redis_manager.set_cache(msg_key, filter_end_flag(response, END_CONVERSATION_MARK), ex=STREAM_TIMEOUT)
+                        redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
                         last_cache_time = current_time                    
 
             # 更新上下文
@@ -362,12 +300,6 @@ def stream(msg_id, stream_key):
                     ("assistant", remove_reasoning_content(response))
                 ], data["model_type"], data["model_name"], data["context_limit"])
 
-            # 检查是否包含结束对话标记
-            if data.get("chat_state_key") and END_CONVERSATION_MARK in response:
-                response = filter_end_flag(response, END_CONVERSATION_MARK)
-                redis_manager.delete_cache(data["chat_state_key"])
-                redis_manager.delete_context(data["context_key"])
-                is_end = True            
         except Exception as e:
             # 处理异常
             response = str(e)
@@ -398,13 +330,6 @@ def stream(msg_id, stream_key):
                     "text_type": "md",
                     "silence": "yes"
                 })
-
-                # 如果是结束对话，通知用户
-                if is_end:
-                    request_client.call({
-                        "content": '[{"content":"再见"}]',
-                        "silence": "yes",
-                    }, action='template')   
             except Exception as e:
                 # 记录最终阶段的错误，但不影响主流程
                 print(f"Error in cleanup: {str(e)}")
@@ -474,7 +399,7 @@ def invoke():
     # 优先从 header 获取配置，如果不存在则从 POST 参数获取
     text = request.args.get('text') or request.form.get('text')
     model_type = request.args.get('model_type') or request.form.get('model_type') or 'openai'
-    model_name = request.args.get('model_name') or request.form.get('model_name') or 'gpt-3.5-turbo'
+    model_name = request.args.get('model_name') or request.form.get('model_name') or 'gpt-5-nano'
     system_message = request.args.get('system_message') or request.form.get('system_message')
     api_key = request.args.get('api_key') or request.form.get('api_key')
     base_url = request.args.get('base_url') or request.form.get('base_url')
