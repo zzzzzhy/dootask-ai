@@ -196,6 +196,7 @@ export const BotSettingsSheet = ({
       <SheetContent
         side="right"
         className="flex w-full max-w-3xl flex-col gap-6 overflow-hidden"
+        onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <SheetHeader>
           <SheetTitle>AI 设置</SheetTitle>
