@@ -187,7 +187,7 @@ export const AISystemConfig: SystemConfig = {
         },
         {
           prop: "models",
-          link: "https://help.aliyun.com/zh/dashscope/developer-reference/the-models",
+          link: "https://help.aliyun.com/zh/model-studio/models",
         },
       ],
     },
@@ -200,7 +200,7 @@ export const AISystemConfig: SystemConfig = {
         },
         {
           prop: "models",
-          link: "https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Nlks5zkzu",
+          link: "https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Wm9cvy6rl",
         },
       ],
     },
