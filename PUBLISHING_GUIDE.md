@@ -7,3 +7,12 @@
 3. 触发 github action
 4. 等待 action 完成
 5. 发布成功
+
+## 需要配置的变量
+
+请在 github 仓库的 settings -> secrets and variables -> actions 中配置 Repository secrets 以下变量：
+
+- DOOTASK_USERNAME: DooTask AppStore 用户名
+- DOOTASK_PASSWORD: DooTask AppStore 密码
+- DOCKERHUB_USERNAME: Docker Hub 用户名
+- DOCKERHUB_TOKEN: Docker Hub 密码（Token）

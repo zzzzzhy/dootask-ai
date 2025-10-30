@@ -1,0 +1,7 @@
+menu_items:
+  - location: application
+    label:
+      en: AI Bot
+      zh: AI 机器人
+    url: "ai/list?theme={system_theme}&lang={system_lang}"
+    url_type: iframe

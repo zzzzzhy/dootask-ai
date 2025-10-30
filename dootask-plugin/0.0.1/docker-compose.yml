@@ -1,0 +1,8 @@
+services:
+  ai:
+    image: "kuaifan/dootask-ai:${PLUGIN_VERSION}"
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: "${REDIS_HOST}"
+      REDIS_PORT: "${REDIS_PORT}"
+      TIMEOUT: 600

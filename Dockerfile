@@ -1,4 +1,12 @@
-# 构建阶段
+# UI 构建阶段
+FROM node:20-alpine AS ui-builder
+WORKDIR /ui
+COPY ui/package.json ui/package-lock.json ./
+RUN npm ci
+COPY ui .
+RUN npm run build
+
+# Python 依赖构建阶段
 FROM python:3.11-slim-bookworm AS builder
 
 # 设置工作目录
@@ -49,6 +57,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget && \
 COPY main.py .
 COPY helper/ helper/
 COPY static/ static/
+COPY --from=ui-builder /ui/dist ./static/ui
 COPY requirements.txt .
 COPY README.md .
 COPY LICENSE .

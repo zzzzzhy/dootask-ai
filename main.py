@@ -1,5 +1,6 @@
 from types import SimpleNamespace
-from flask import Flask, request, jsonify, Response, stream_with_context
+from pathlib import Path
+from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, replace_think_content, remove_reasoning_content, process_html_content
 from helper.request import Request
@@ -13,6 +14,12 @@ import string
 
 app = Flask(__name__)
 CORS(app)  # 启用CORS，允许所有来源的跨域请求
+
+UI_DIST_PATH = Path(__file__).resolve().parent / "static" / "ui"
+
+
+def ui_assets_available() -> bool:
+    return UI_DIST_PATH.exists() and UI_DIST_PATH.is_dir()
 
 # 初始化 Redis 管理器
 redis_manager = RedisManager()
@@ -491,6 +498,48 @@ def invoke():
         })
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)})
+
+# 前端 UI 路由
+def serve_ui_asset(path: str):
+    if not ui_assets_available():
+        return jsonify({"error": "UI assets not available"}), 404
+
+    safe_path = path.lstrip("/")
+    target = UI_DIST_PATH / safe_path
+    if target.exists() and target.is_file():
+        return send_from_directory(UI_DIST_PATH, safe_path)
+
+    return send_from_directory(UI_DIST_PATH, 'index.html')
+
+
+def serve_ui_index():
+    if not ui_assets_available():
+        return jsonify({"message": "DooTask AI service"}), 200
+    return send_from_directory(UI_DIST_PATH, 'index.html')
+
+
+@app.route('/')
+def root():
+    return serve_ui_index()
+
+
+@app.route('/ai/')
+@app.route('/ai')
+def ai_root():
+    return serve_ui_index()
+
+
+@app.route('/ui/', defaults={'path': 'index.html'})
+@app.route('/ui/<path:path>')
+def ui_assets(path):
+    return serve_ui_asset(path)
+
+
+@app.route('/ai/ui/', defaults={'path': 'index.html'})
+@app.route('/ai/ui/<path:path>')
+def ui_assets_prefixed(path):
+    return serve_ui_asset(path)
+
 
 # 健康检查
 @app.route('/health')
