@@ -500,8 +500,17 @@ def invoke():
     except Exception as e:
         return jsonify({"code": 500, "error": str(e)})
 
-# 前端 UI 路由
-def serve_ui_asset(path: str):
+# 前端 UI 首页路由
+@app.route('/')
+def root():
+    if not ui_assets_available():
+        return jsonify({"message": "DooTask AI service"}), 200
+    return send_from_directory(UI_DIST_PATH, 'index.html')
+
+# 前端 UI 静态资源路由
+@app.route('/ui/', defaults={'path': 'index.html'})
+@app.route('/ui/<path:path>')
+def ui_assets(path):
     if not ui_assets_available():
         return jsonify({"error": "UI assets not available"}), 404
 
@@ -512,37 +521,9 @@ def serve_ui_asset(path: str):
 
     return send_from_directory(UI_DIST_PATH, 'index.html')
 
-
-def serve_ui_index():
-    if not ui_assets_available():
-        return jsonify({"message": "DooTask AI service"}), 200
-    return send_from_directory(UI_DIST_PATH, 'index.html')
-
-
-@app.route('/')
-def root():
-    return serve_ui_index()
-
-
-@app.route('/ai/')
-@app.route('/ai')
-def ai_root():
-    return serve_ui_index()
-
-
-@app.route('/ui/', defaults={'path': 'index.html'})
-@app.route('/ui/<path:path>')
-def ui_assets(path):
-    return serve_ui_asset(path)
-
-
-@app.route('/ai/ui/', defaults={'path': 'index.html'})
-@app.route('/ai/ui/<path:path>')
-def ui_assets_prefixed(path):
-    return serve_ui_asset(path)
-
-
-def _models_list_handler():
+# 获取模型列表
+@app.route('/models/list', methods=['GET'])
+def models_list():
     model_type = request.args.get('type', '').strip()
     base_url = request.args.get('base_url', '').strip()
     key = request.args.get('key', '').strip()
@@ -562,17 +543,6 @@ def _models_list_handler():
         return jsonify({"code": 500, "error": "获取失败"}), 500
 
     return jsonify({"code": 200, "data": data})
-
-
-@app.route('/models/list', methods=['GET'])
-def models_list():
-    return _models_list_handler()
-
-
-@app.route('/ai/models/list', methods=['GET'])
-def models_list_prefixed():
-    return _models_list_handler()
-
 
 # 健康检查
 @app.route('/health')
