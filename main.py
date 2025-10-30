@@ -272,6 +272,9 @@ def stream(msg_id, stream_key):
                             if chunk.type == 'thinking' and hasattr(chunk, 'thinking'):    
                                 chunk = SimpleNamespace(reasoning_content=chunk.thinking)
                                 isContinue = False
+                            elif chunk.type == 'reasoning' and hasattr(chunk, 'reasoning'):    
+                                chunk = SimpleNamespace(reasoning_content=chunk.reasoning)
+                                isContinue = False
                             elif chunk.type == 'text' and hasattr(chunk, 'text'):
                                 chunk = SimpleNamespace(content=chunk.text)
                                 isContinue = False

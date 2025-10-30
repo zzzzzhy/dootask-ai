@@ -16,7 +16,7 @@ DEFAULT_MODELS: Dict[str, List[str]] = {
         "gpt-4 | GPT-4",
         "gpt-4o-mini | GPT-4o Mini",
         "gpt-4-turbo | GPT-4 Turbo",
-        "o3 (thinking) | GPT-o3",
+        "o3 | GPT-o3",
         "o1 | GPT-o1",
         "o4-mini | GPT-o4 Mini",
         "o3-mini | GPT-o3 Mini",

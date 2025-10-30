@@ -77,8 +77,14 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
         if max_tokens > 0:
             config.update({"max_tokens": max_tokens})
 
-        if thinking > 0:
-            config.update({"thinking": {"type": "enabled", "budget_tokens": 2000 if thinking == 1 else thinking}})
+        if model_type == "openai":
+            if thinking > 0:
+                config.update({"reasoning_effort": "medium"})
+            elif "gpt-5" in model_name.lower():
+                config.update({"reasoning_effort": "minimal"})
+        else:
+            if thinking > 0:
+                config.update({"thinking": {"type": "enabled", "budget_tokens": 2000 if thinking == 1 else thinking}})
 
         common_params = {
             "model": model_name,
