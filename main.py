@@ -3,6 +3,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, replace_think_content, remove_reasoning_content, process_html_content
+from helper.models import ModelListError, get_models_list
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
 from helper.thread_pool import DynamicThreadPoolExecutor
@@ -539,6 +540,38 @@ def ui_assets(path):
 @app.route('/ai/ui/<path:path>')
 def ui_assets_prefixed(path):
     return serve_ui_asset(path)
+
+
+def _models_list_handler():
+    model_type = request.args.get('type', '').strip()
+    base_url = request.args.get('base_url', '').strip()
+    key = request.args.get('key', '').strip()
+    agency = request.args.get('agency', '').strip()
+
+    try:
+        data = get_models_list(
+            model_type,
+            base_url=base_url or None,
+            key=key or None,
+            agency=agency or None,
+        )
+    except ModelListError as exc:
+        return jsonify({"code": 400, "error": str(exc)}), 400
+    except Exception as exc:  # pragma: no cover - defensive logging
+        app.logger.exception("Failed to get model list")
+        return jsonify({"code": 500, "error": "获取失败"}), 500
+
+    return jsonify({"code": 200, "data": data})
+
+
+@app.route('/models/list', methods=['GET'])
+def models_list():
+    return _models_list_handler()
+
+
+@app.route('/ai/models/list', methods=['GET'])
+def models_list_prefixed():
+    return _models_list_handler()
 
 
 # 健康检查

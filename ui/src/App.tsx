@@ -312,39 +312,47 @@ function App() {
     const keyKey = `${bot}_key`
     const agencyKey = `${bot}_agency`
 
-    const requestData: Record<string, string> = { type: bot }
+    const params = new URLSearchParams({ type: bot })
     if (bot === "ollama") {
       const baseUrl = formValues[bot]?.[baseUrlKey]
       if (!baseUrl) {
         modalError("请先填写 Base URL")
         return
       }
-      requestData.base_url = baseUrl
-      if (formValues[bot]?.[keyKey]) {
-        requestData.key = formValues[bot]?.[keyKey] ?? ""
+      params.set("base_url", baseUrl)
+      const keyValue = formValues[bot]?.[keyKey]
+      if (keyValue) {
+        params.set("key", keyValue)
       }
-      if (formValues[bot]?.[agencyKey]) {
-        requestData.agency = formValues[bot]?.[agencyKey] ?? ""
+      const agencyValue = formValues[bot]?.[agencyKey]
+      if (agencyValue) {
+        params.set("agency", agencyValue)
       }
     }
 
     setDefaultsLoading((prev) => ({ ...prev, [bot]: true }))
     try {
-      const { data } = await requestAPI({
-        url: `system/setting/aibot_defmodels`,
-        method: "get",
-        data: requestData,
-      })
-      const models = Array.isArray(data?.models) ? data.models.join("\n") : ""
-      if (!models) {
-        messageError("未找到默认模型")
-        return
+      const response = await fetch(`/ai/models/list?${params.toString()}`)
+      const result = await response.json().catch(() => null)
+
+      if (!response.ok || !result) {
+        throw new Error("获取失败")
       }
+
+      if (result.code !== 200) {
+        throw new Error(result.error || "获取失败")
+      }
+
+      const modelsArray = Array.isArray(result.data?.models) ? result.data.models : []
+      if (!modelsArray.length) {
+        throw new Error("未找到默认模型")
+      }
+
       setFormValues((prev) => ({
         ...prev,
         [bot]: {
           ...(prev[bot] ?? {}),
-          [modelsKey]: models,
+          [modelsKey]: modelsArray.join("\n"),
         },
       }))
       messageSuccess("获取成功")
