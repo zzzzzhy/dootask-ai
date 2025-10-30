@@ -15,10 +15,11 @@ import {
 import { BotCard } from "@/components/aibot/BotCard"
 import { BotSettingsSheet } from "@/components/aibot/BotSettingsSheet"
 import type { AIBotItem, AIBotKey } from "@/data/aibots"
-import { AIBotList } from "@/data/aibots"
-import { AISystemConfig } from "@/data/aibot-config"
+import { createLocalizedAIBotList } from "@/data/aibots"
+import { getAISystemConfig, type SystemConfig } from "@/data/aibot-config"
 import { mergeFields, parseModelNames } from "@/lib/aibot"
 import type { GeneratedField } from "@/lib/aibot"
+import { useI18n } from "@/lib/i18n-context"
 
 type SettingsState = Record<AIBotKey, Record<string, string>>
 type LoadingState = Record<AIBotKey, boolean>
@@ -39,10 +40,13 @@ const applyTheme = (theme: "dark" | "light") => {
   }
 }
 
-const fieldMapFactory = (bots: AIBotItem[]): Record<AIBotKey, GeneratedField[]> => {
-  const baseFields = AISystemConfig.fields
+const fieldMapFactory = (
+  bots: AIBotItem[],
+  config: SystemConfig,
+): Record<AIBotKey, GeneratedField[]> => {
+  const baseFields = config.fields
   return bots.reduce((acc, bot) => {
-    acc[bot.value] = mergeFields(baseFields, AISystemConfig.aiList[bot.value], bot.value)
+    acc[bot.value] = mergeFields(baseFields, config.aiList[bot.value], bot.value)
     return acc
   }, {} as Record<AIBotKey, GeneratedField[]>)
 }
@@ -65,7 +69,9 @@ const resolveErrorMessage = (error: unknown, fallback: string) => {
 }
 
 function App() {
-  const [bots, setBots] = useState<AIBotItem[]>(() => AIBotList)
+  const { lang, t } = useI18n()
+  const systemConfig = useMemo(() => getAISystemConfig(lang), [lang])
+  const [bots, setBots] = useState<AIBotItem[]>(() => createLocalizedAIBotList(lang))
   const [chatLoading, setChatLoading] = useState<LoadingState>({} as LoadingState)
   const [isAdmin, setIsAdmin] = useState(false)
   const [settingsOpen, setSettingsOpenState] = useState(false)
@@ -79,11 +85,15 @@ function App() {
   const settingsOpenRef = useRef(settingsOpen)
   const interceptReleaseRef = useRef<(() => void) | null>(null)
 
-  const fieldMap = useMemo(() => fieldMapFactory(bots), [bots])
+  const fieldMap = useMemo(() => fieldMapFactory(bots, systemConfig), [bots, systemConfig])
 
   useEffect(() => {
     settingsOpenRef.current = settingsOpen
   }, [settingsOpen])
+
+  useEffect(() => {
+    setBots((prev) => createLocalizedAIBotList(lang, prev))
+  }, [lang])
 
   useEffect(() => {
     applyTheme(getThemeFromSearch())
@@ -158,11 +168,11 @@ function App() {
         data: { type: bot.value },
       })
       if (!data?.userid) {
-        throw new Error("未找到机器人信息")
+        throw new Error(t("errors.botNotFound"))
       }
       await openDialogUserid(Number(data.userid))
     } catch (error) {
-      messageError(resolveErrorMessage(error, "机器人暂未开启"))
+      messageError(resolveErrorMessage(error, t("errors.botUnavailable")))
     } finally {
       setChatLoading((prev) => ({ ...prev, [bot.value]: false }))
     }
@@ -186,7 +196,7 @@ function App() {
       setFormValues((prev) => ({ ...prev, [bot]: payload }))
       setInitialValues((prev) => ({ ...prev, [bot]: payload }))
     } catch (error) {
-      messageError(resolveErrorMessage(error, "加载失败"))
+      messageError(resolveErrorMessage(error, t("errors.loadFailed")))
     } finally {
       setSettingsLoadingMap((prev) => ({ ...prev, [bot]: false }))
     }
@@ -236,7 +246,7 @@ function App() {
 
   const handleOpenSettings = async (bot: AIBotItem) => {
     if (!isAdmin) {
-      messageError("仅管理员可配置机器人。")
+      messageError(t("errors.adminOnly"))
       return
     }
     setActiveBot(bot.value)
@@ -274,7 +284,7 @@ function App() {
   const handleSubmit = async (bot: AIBotKey) => {
     const fields = fieldMap[bot] ?? []
     if (!fields.length) {
-      messageError("该机器人暂不支持配置。")
+      messageError(t("errors.botUnsupported"))
       return
     }
     const payload = fields.reduce<Record<string, string>>((acc, field) => {
@@ -296,10 +306,10 @@ function App() {
       const savedData = (response.data ?? {}) as Record<string, string>
       setFormValues((prev) => ({ ...prev, [bot]: savedData }))
       setInitialValues((prev) => ({ ...prev, [bot]: savedData }))
-      messageSuccess(response.msg ?? "修改成功")
+      messageSuccess(response.msg ?? t("success.save"))
       await refreshBotTags()
     } catch (error) {
-      modalError(resolveErrorMessage(error, "提交失败"))
+      modalError(resolveErrorMessage(error, t("errors.submitFailed")))
     } finally {
       setSettingsSavingMap((prev) => ({ ...prev, [bot]: false }))
     }
@@ -316,7 +326,7 @@ function App() {
     if (bot === "ollama") {
       const baseUrl = formValues[bot]?.[baseUrlKey]
       if (!baseUrl) {
-        modalError("请先填写 Base URL")
+        modalError(t("errors.baseUrlRequired"))
         return
       }
       params.set("base_url", baseUrl)
@@ -336,16 +346,16 @@ function App() {
       const result = await response.json().catch(() => null)
 
       if (!response.ok || !result) {
-        throw new Error("获取失败")
+        throw new Error(t("errors.fetchFailed"))
       }
 
       if (result.code !== 200) {
-        throw new Error(result.error || "获取失败")
+        throw new Error(result.error || t("errors.fetchFailed"))
       }
 
       const modelsArray = Array.isArray(result.data?.models) ? result.data.models : []
       if (!modelsArray.length) {
-        throw new Error("未找到默认模型")
+        throw new Error(t("errors.modelsNotFound"))
       }
 
       setFormValues((prev) => ({
@@ -355,9 +365,9 @@ function App() {
           [modelsKey]: modelsArray.join("\n"),
         },
       }))
-      messageSuccess("获取成功")
+      messageSuccess(t("success.fetchSuccess"))
     } catch (error) {
-      modalError(resolveErrorMessage(error, "获取失败"))
+      modalError(resolveErrorMessage(error, t("errors.fetchFailed")))
     } finally {
       setDefaultsLoading((prev) => ({ ...prev, [bot]: false }))
     }
@@ -365,7 +375,7 @@ function App() {
 
   const handleSheetOpenChange = (open: boolean) => {
     if (open && !isAdmin) {
-      messageError("仅管理员可配置机器人。")
+      messageError(t("errors.adminOnly"))
       return
     }
     setSettingsOpenState(open)
@@ -375,10 +385,8 @@ function App() {
     <div className="min-h-screen bg-background">
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 p-6 sm:p-10">
         <header className="space-y-3">
-          <h1 className="text-2xl font-semibold">AI 机器人</h1>
-          <p className="text-sm text-muted-foreground">
-            浏览可用的 AI 机器人，快速开始对话，并为管理员提供统一的配置入口。
-          </p>
+          <h1 className="text-2xl font-semibold">{t("app.title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("app.description")}</p>
         </header>
         <section>
           <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
@@ -396,7 +404,7 @@ function App() {
           </div>
           {!bots.length && (
             <div className="flex items-center justify-center rounded-lg border border-dashed py-16 text-sm text-muted-foreground">
-              暂无机器人配置，请稍后再试。
+              {t("app.empty")}
             </div>
           )}
         </section>

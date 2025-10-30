@@ -29,6 +29,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import type { AIBotItem, AIBotKey } from "@/data/aibots"
 import type { GeneratedField } from "@/lib/aibot"
 import { parseModelNames } from "@/lib/aibot"
+import { useI18n } from "@/lib/i18n-context"
 export interface BotSettingsSheetProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -66,6 +67,7 @@ export const BotSettingsSheet = ({
   savingMap,
   defaultsLoadingMap,
 }: BotSettingsSheetProps) => {
+  const { t } = useI18n()
   const hasChanges = useMemo(() => {
     const result: Record<AIBotKey, boolean> = {} as Record<AIBotKey, boolean>
     bots.forEach((bot) => {
@@ -126,7 +128,7 @@ export const BotSettingsSheet = ({
                   disabled={defaultsLoadingMap[bot.value]}
                   onClick={() => onUseDefaultModels(bot.value)}
                 >
-                  {defaultsLoadingMap[bot.value] ? "获取中..." : field.functions}
+                  {defaultsLoadingMap[bot.value] ? t("sheet.fetching") : field.functions}
                 </Button>
               )}
             </div>
@@ -172,7 +174,7 @@ export const BotSettingsSheet = ({
           <p className="text-xs text-muted-foreground">
             {field.link ? (
               <>
-                {field.tipPrefix ?? "获取方式"}{" "}
+                {field.tipPrefix ?? t("sheet.tipPrefix")}{" "}
                 <a
                   href={field.link}
                   target="_blank"
@@ -199,7 +201,7 @@ export const BotSettingsSheet = ({
         onEscapeKeyDown={(event) => event.preventDefault()}
       >
         <SheetHeader>
-          <SheetTitle>AI 设置</SheetTitle>
+          <SheetTitle>{t("sheet.title")}</SheetTitle>
         </SheetHeader>
         <Tabs
           value={activeBot}
@@ -227,11 +229,11 @@ export const BotSettingsSheet = ({
               >
                 {isLoading ? (
                   <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                    配置加载中...
+                    {t("sheet.loading")}
                   </div>
                 ) : fields.length === 0 ? (
                   <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                    暂无可配置项。
+                    {t("sheet.empty")}
                   </div>
                 ) : (
                   <div className="flex flex-1 flex-col min-h-0">
@@ -249,7 +251,7 @@ export const BotSettingsSheet = ({
                             onClick={() => onReload(bot.value)}
                             disabled={loadingMap[bot.value] || savingMap[bot.value]}
                           >
-                            重新加载
+                            {t("sheet.reload")}
                           </Button>
                           <Button
                             type="button"
@@ -257,7 +259,7 @@ export const BotSettingsSheet = ({
                             onClick={() => onReset(bot.value)}
                             disabled={!hasChanges[bot.value]}
                           >
-                            重置
+                            {t("sheet.reset")}
                           </Button>
                         </div>
                         <div className="flex items-center gap-3">
@@ -269,7 +271,7 @@ export const BotSettingsSheet = ({
                               !hasChanges[bot.value]
                             }
                           >
-                            {savingMap[bot.value] ? "提交中..." : "提交"}
+                            {savingMap[bot.value] ? t("sheet.submitting") : t("sheet.submit")}
                           </Button>
                         </div>
                       </div>

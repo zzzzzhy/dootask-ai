@@ -1,3 +1,4 @@
+import type { Language } from "@/lib/i18n-core"
 import type { AIBotKey } from "./aibots"
 
 export type FieldControlType = "text" | "password" | "textarea" | "model"
@@ -25,63 +26,76 @@ export interface BotConfig {
   extraFields?: ExtraFieldConfig[]
 }
 
-interface SystemConfig {
+export interface SystemConfig {
   fields: FieldConfig[]
   aiList: Record<AIBotKey, BotConfig>
 }
 
-export const AISystemConfig: SystemConfig = {
-  fields: [
+const createFields = (lang: Language): FieldConfig[] => {
+  const isZh = lang === "zh"
+  return [
     {
       label: "API Key",
       prop: "key",
       type: "password",
     },
     {
-      label: "模型列表",
+      label: isZh ? "模型列表" : "Model List",
       prop: "models",
       type: "textarea",
       maxlength: 1000,
       showWordLimit: 0.9,
-      placeholder: "一行一个模型名称",
-      functions: "使用默认模型列表",
+      placeholder: isZh ? "一行一个模型名称" : "One model name per line",
+      functions: isZh ? "使用默认模型列表" : "Use default model list",
     },
     {
-      label: "默认模型",
+      label: isZh ? "默认模型" : "Default Model",
       prop: "model",
       type: "model",
-      placeholder: "请选择默认模型",
-      tip: "可选数据来自模型列表",
+      placeholder: isZh ? "请选择默认模型" : "Select a default model",
+      tip: isZh ? "可选数据来自模型列表" : "Options come from the model list",
     },
     {
       label: "Base URL",
       prop: "base_url",
-      placeholder: "Enter base URL...",
-      tip: "API请求的基础URL路径，如果没有请留空",
+      placeholder: isZh ? "请输入 Base URL..." : "Enter the base URL...",
+      tip: isZh
+        ? "API 请求的基础 URL 路径，如果没有请留空"
+        : "Base URL for API requests. Leave empty if none.",
     },
     {
-      label: "使用代理",
+      label: isZh ? "使用代理" : "Use Proxy",
       prop: "agency",
-      placeholder: "支持 http 或 socks 代理",
-      tip: "例如：http://proxy.com 或 socks5://proxy.com",
+      placeholder: isZh ? "支持 http 或 socks 代理" : "Supports http or socks proxy",
+      tip: isZh
+        ? "例如：http://proxy.com 或 socks5://proxy.com"
+        : "For example: http://proxy.com or socks5://proxy.com",
     },
     {
       label: "Temperature",
       prop: "temperature",
-      placeholder: "模型温度，低则保守，高则多样",
-      tip: "例如：0.7，范围：0-1，默认：0.7",
+      placeholder: isZh
+        ? "模型温度，低则保守，高则多样"
+        : "Model temperature; lower is more conservative, higher is more diverse",
+      tip: isZh
+        ? "例如：0.7，范围：0-1，默认：0.7"
+        : "For example: 0.7. Range: 0-1. Default: 0.7",
     },
     {
-      label: "默认提示词",
+      label: isZh ? "默认提示词" : "Default Prompt",
       prop: "system",
       type: "textarea",
       maxlength: 20000,
       showWordLimit: 0.9,
-      placeholder: "请输入默认提示词",
-      tip: "例如：你是一个人开发的AI助手",
+      placeholder: isZh ? "请输入默认提示词" : "Enter the default prompt",
+      tip: isZh ? "例如：你是一个人开发的AI助手" : "For example: You are the AI assistant for a solo developer.",
     },
-  ],
-  aiList: {
+  ]
+}
+
+const createAiList = (lang: Language): Record<AIBotKey, BotConfig> => {
+  const isZh = lang === "zh"
+  return {
     openai: {
       extraFields: [
         {
@@ -134,8 +148,8 @@ export const AISystemConfig: SystemConfig = {
         },
         {
           prop: "agency",
-          placeholder: "仅支持 http 代理",
-          tip: "例如：http://proxy.com",
+          placeholder: isZh ? "仅支持 http 代理" : "Only http proxy is supported",
+          tip: isZh ? "例如：http://proxy.com" : "For example: http://proxy.com",
         },
       ],
     },
@@ -157,11 +171,13 @@ export const AISystemConfig: SystemConfig = {
         {
           prop: "base_url",
           placeholder: "http://localhost:11434",
-          tip: "例如：http://localhost:11434",
+          tip: isZh ? "例如：http://localhost:11434" : "For example: http://localhost:11434",
         },
         {
           prop: "models",
-          tip: "点击下方按钮可获取默认模型列表",
+          tip: isZh
+            ? "点击下方按钮可获取默认模型列表"
+            : "Click the button below to fetch the default model list.",
         },
       ],
     },
@@ -169,7 +185,7 @@ export const AISystemConfig: SystemConfig = {
       extraFields: [
         {
           prop: "key",
-          placeholder: "智谱 API Key",
+          placeholder: isZh ? "智谱 API Key" : "Zhipu API Key",
           link: "https://open.bigmodel.cn/usercenter/apikeys",
         },
         {
@@ -182,7 +198,7 @@ export const AISystemConfig: SystemConfig = {
       extraFields: [
         {
           prop: "key",
-          placeholder: "通义千问 API Key",
+          placeholder: isZh ? "通义千问 API Key" : "Qwen API Key",
           link: "https://bailian.console.aliyun.com/",
         },
         {
@@ -195,7 +211,7 @@ export const AISystemConfig: SystemConfig = {
       extraFields: [
         {
           prop: "key",
-          placeholder: "文心一言 API Key",
+          placeholder: isZh ? "文心一言 API Key" : "ERNIE Bot API Key",
           link: "https://console.bce.baidu.com/ai/#/ai/wenxinworkshop/overview/index",
         },
         {
@@ -204,5 +220,10 @@ export const AISystemConfig: SystemConfig = {
         },
       ],
     },
-  },
+  }
 }
+
+export const getAISystemConfig = (lang: Language): SystemConfig => ({
+  fields: createFields(lang),
+  aiList: createAiList(lang),
+})

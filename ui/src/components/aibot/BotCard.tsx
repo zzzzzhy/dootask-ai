@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import type { AIBotItem } from "@/data/aibots"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n-context"
 
 interface BotCardProps {
   bot: AIBotItem
@@ -21,6 +22,7 @@ export const BotCard = ({
   onShowDescription,
   onStartChat,
 }: BotCardProps) => {
+  const { t } = useI18n()
   const { tagLabel, tags } = bot
   const extraTagCount = tags.length > 1 ? tags.length - 1 : 0
 
@@ -69,7 +71,7 @@ export const BotCard = ({
       </CardContent>
       <CardFooter className="flex flex-wrap gap-2">
         <Button className="flex-1" disabled={chatLoading} onClick={() => onStartChat(bot)}>
-          {chatLoading ? "连接中..." : "开始聊天"}
+          {chatLoading ? t("botCard.connecting") : t("botCard.startChat")}
         </Button>
         {isAdmin && (
           <Button
@@ -77,7 +79,7 @@ export const BotCard = ({
             className="flex-1"
             onClick={() => onOpenSettings(bot)}
           >
-            设置
+            {t("botCard.settings")}
           </Button>
         )}
       </CardFooter>
