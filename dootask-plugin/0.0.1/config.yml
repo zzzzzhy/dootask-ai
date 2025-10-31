@@ -3,5 +3,9 @@ menu_items:
     label:
       en: AI Bot
       zh: AI 机器人
-    url: "ai/list?theme={system_theme}&lang={system_lang}"
+    url: "ai/?theme={system_theme}&lang={system_lang}"
     url_type: iframe
+    capsule:
+      visible: true
+      top: 18
+      right: 18
