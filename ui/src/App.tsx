@@ -84,6 +84,7 @@ function App() {
 
   const settingsOpenRef = useRef(settingsOpen)
   const interceptReleaseRef = useRef<(() => void) | null>(null)
+  const modelEditorBackHandlerRef = useRef<() => boolean>(() => false)
 
   const fieldMap = useMemo(() => fieldMapFactory(bots, systemConfig), [bots, systemConfig])
 
@@ -208,6 +209,9 @@ function App() {
     }
     try {
       interceptReleaseRef.current = await interceptBack(() => {
+        if (modelEditorBackHandlerRef.current && modelEditorBackHandlerRef.current()) {
+          return true
+        }
         if (settingsOpenRef.current) {
           setSettingsOpenState(false)
           return true
@@ -228,6 +232,11 @@ function App() {
       }
       interceptReleaseRef.current = null
     }
+    modelEditorBackHandlerRef.current = () => false
+  }, [])
+
+  const handleRegisterModelEditorBackHandler = useCallback((handler: () => boolean) => {
+    modelEditorBackHandlerRef.current = handler
   }, [])
 
   useEffect(() => {
@@ -315,9 +324,8 @@ function App() {
     }
   }
 
-  const handleUseDefaultModels = async (bot: AIBotKey) => {
-    if (defaultsLoading[bot]) return
-    const modelsKey = `${bot}_models`
+  const handleUseDefaultModels = async (bot: AIBotKey): Promise<string | null> => {
+    if (defaultsLoading[bot]) return null
     const baseUrlKey = `${bot}_base_url`
     const keyKey = `${bot}_key`
     const agencyKey = `${bot}_agency`
@@ -327,7 +335,7 @@ function App() {
       const baseUrl = formValues[bot]?.[baseUrlKey]
       if (!baseUrl) {
         modalError(t("errors.baseUrlRequired"))
-        return
+        return null
       }
       params.set("base_url", baseUrl)
       const keyValue = formValues[bot]?.[keyKey]
@@ -358,16 +366,12 @@ function App() {
         throw new Error(t("errors.modelsNotFound"))
       }
 
-      setFormValues((prev) => ({
-        ...prev,
-        [bot]: {
-          ...(prev[bot] ?? {}),
-          [modelsKey]: modelsArray.join("\n"),
-        },
-      }))
+      const modelsString = modelsArray.join("\n")
       messageSuccess(t("success.fetchSuccess"))
+      return modelsString
     } catch (error) {
       modalError(resolveErrorMessage(error, t("errors.fetchFailed")))
+      return null
     } finally {
       setDefaultsLoading((prev) => ({ ...prev, [bot]: false }))
     }
@@ -427,6 +431,7 @@ function App() {
           onSubmit={handleSubmit}
           onReset={handleReset}
           onUseDefaultModels={handleUseDefaultModels}
+          onRegisterModelEditorBackHandler={handleRegisterModelEditorBackHandler}
         />
       )}
     </div>
