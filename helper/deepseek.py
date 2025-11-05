@@ -5,7 +5,7 @@ from typing import AsyncIterator
 from typing import Any, Dict, Iterator, List, Optional
 from typing_extensions import List, TypedDict
 
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
+from langchain.messages  import HumanMessage, AIMessage, SystemMessage
 from langchain_core.messages import AIMessageChunk, BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, LLMResult
 from langchain_core.callbacks import CallbackManagerForLLMRun
