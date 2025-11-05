@@ -41,16 +41,44 @@ UI_DIST_PATH = Path(__file__).resolve().parent / "static" / "ui"
 def ui_assets_available() -> bool:
     return UI_DIST_PATH.exists() and UI_DIST_PATH.is_dir()
 
+async def check_website_async(app: FastAPI):
+    """检测MCP是否安装"""
+    url = "http://nginx/apps/mcp_server/healthz"  # 替换为你的网址
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get( url, timeout=3 )
+            if response.json().get("status") == "ok":
+                app.state.mcp = True
+            else:
+                app.state.mcp = False
+    except Exception as e:
+        app.state.mcp = False
+        logger.error(f"❌ 检测MCP失败: {url} - 错误: {e}")
+
+async def periodic_check(app: FastAPI):
+    """定时检测任务"""
+    while True:
+        await check_website_async(app)
+        await asyncio.sleep(600)  # 10分钟 = 600秒
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时初始化
     try:
+        task = asyncio.create_task(periodic_check(app))
         redis_manager = RedisManager()
         logger.info("✅ 初始化成功")
         app.state.redis_manager = redis_manager
     except Exception as e:
         logger.info(f"❌ 初始化失败: {str(e)}")
     yield
+    # 关闭时
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+    logger.info("✅ 定时任务已停止")
     # 关闭时清理
     logger.info("🛑 AI服务正在关闭...")
 
@@ -232,7 +260,7 @@ async def chat(request: Request):
 
 # 处理流式响应
 @app.get('/stream/{msg_id}/{stream_key}')
-async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Host")):
+async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Host"), scheme: str = Header("http", alias="scheme")):
     if not stream_key:
         async def error_stream():
             yield f"id: {msg_id}\nevent: done\ndata: {json_error('No key')}\n\n"
@@ -243,7 +271,7 @@ async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Ho
 
     # 检查 msg_id 是否在 Redis 中
     data = await app.state.redis_manager.get_input(msg_id)
-    
+
     if not data:
         async def error_stream():
             yield f"id: {msg_id}\nevent: done\ndata: {json_error('No such ID')}\n\n"
@@ -272,19 +300,20 @@ async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Ho
             finished_stream(),
             media_type='text/event-stream'
         )
-    
-    client = MultiServerMCPClient(
-        {
-            "dootask-task": {
-                "url": f"https://{host}/apps/mcp_server/mcp",
-                "transport": "streamable_http",
-                "headers": {
-                    "token": data.get("msg_user_token","unknown")
-                },
+    tools = []
+    if app.state.mcp:
+        client = MultiServerMCPClient(
+            {
+                "dootask-task": {
+                    "url": f"{scheme}://{host}/apps/mcp_server/mcp",
+                    "transport": "streamable_http",
+                    "headers": {
+                        "token": data.get("msg_user_token","unknown")
+                    },
+                }
             }
-        }
-    )
-    tools = await client.get_tools()
+        )
+        tools = await client.get_tools()
     async def stream_generate(msg_id, msg_key, data, redis_manager):
         """
         流式生成响应
@@ -357,7 +386,7 @@ async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Ho
             
             # 开始请求流式响应
             async for chunk in agent.astream({"messages": final_context}, stream_mode="messages"):
-                print(chunk)
+                # logger.info(chunk)
                 msg, metadata = chunk
                 if "skip_stream" in metadata.get("tags", []):
                     continue
@@ -390,7 +419,6 @@ async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Ho
                     response += convert_message_content_to_string(msg.reasoning_content)
                     response = replace_think_content(response)
                     current_time = time.time()
-                    print(current_time,last_cache_time)
                     if current_time - last_cache_time >= cache_interval:
                         await redis_manager.set_cache(msg_key, response, ex=STREAM_TIMEOUT)
                         last_cache_time = current_time  
@@ -447,7 +475,7 @@ async def stream(msg_id: str, stream_key: str, host: str = Header(..., alias="Ho
                 }))
             except Exception as e:
                 # 记录最终阶段的错误，但不影响主流程
-                print(f"Error in cleanup: {str(e)}")
+                logger.error(f"Error in cleanup: {str(e)}")
 
     async def stream_producer():
         """
@@ -526,7 +554,6 @@ def parse_langchain_response(messages: list) -> dict:
     
     for msg in messages:
         if isinstance(msg, AIMessage) and msg.response_metadata.get("finish_reason") == "stop":
-            # print("-------------")
             result["final_response"] = msg.content
             result["metadata"].update({
                 "model_name": msg.response_metadata.get("model_name"),
@@ -537,7 +564,7 @@ def parse_langchain_response(messages: list) -> dict:
 
 # 处理直接请求
 @app.post('/invoke')
-async def invoke(request: Request):
+async def invoke(request: Request, host: str = Header(..., alias="Host"), scheme: str = Header(..., alias="scheme")):
     if request.method == "GET":
         params = dict(request.query_params)
     else:
@@ -618,34 +645,38 @@ async def invoke(request: Request):
 
     # 获取现有上下文
     middle_context = await app.state.redis_manager.get_context(f"invoke_{context_key}")
-
+    middle_messages = []
+    if middle_context:
+        middle_messages = [dict_to_message(msg_dict) for msg_dict in middle_context]
     # 添加用户的新消息
     end_context = [HumanMessage(content=text)]
 
     # 处理模型限制
     final_context = handle_context_limits(
         pre_context = pre_context,
-        middle_context = middle_context,
+        middle_context = middle_messages,
         end_context = end_context,
         model_type=model_type, 
         model_name=model_name, 
         custom_limit=context_limit
     )
-    host = request.headers.get("Host")
-    client = MultiServerMCPClient(
-        {
-            "dootask-task": {
-                "url": f"https://{host}/apps/mcp_server/mcp",
-                "transport": "streamable_http",
-                "headers": {
-                    "token": params.get("msg_user[token]")
-                },
+    tools = []
+    if app.state.mcp:
+        client = MultiServerMCPClient(
+            {
+                "dootask-task": {
+                    "url": f"{scheme}://{host}/apps/mcp_server/mcp",
+                    "transport": "streamable_http",
+                    "headers": {
+                        "token": params.get("msg_user[token]")
+                    },
+                }
             }
-        }
-    )
+        )
+        tools = await client.get_tools()
     # 开始请求直接响应
     try:
-        tools = await client.get_tools()
+        
         agent = create_agent(model, tools)
         response = await agent.ainvoke(final_context)
         # response = model.invoke(final_context)
@@ -653,8 +684,8 @@ async def invoke(request: Request):
         resContent = replace_think_content(result["final_response"])
         if context_key:
             await app.state.redis_manager.extend_contexts(f"invoke_{context_key}", [
-                HumanMessage(content=text),
-                AIMessage(content=remove_reasoning_content(resContent))
+                message_to_dict(HumanMessage(content=text)),
+                message_to_dict(AIMessage(content=remove_reasoning_content(response)))
             ], model_type, model_name, context_limit)
         usage_metadata = {}
         if "usage_metadata" in response:
