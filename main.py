@@ -59,7 +59,7 @@ async def periodic_check(app: FastAPI):
     """定时检测任务"""
     while True:
         await check_website_async(app)
-        await asyncio.sleep(600)  # 10分钟 = 600秒
+        await asyncio.sleep(60)  # 10分钟 = 600秒
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
