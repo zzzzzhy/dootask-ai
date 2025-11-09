@@ -3,6 +3,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from helper.utils import get_model_instance, get_swagger_ui, json_empty, json_error, json_content, replace_think_content, remove_reasoning_content, process_html_content
+from helper.invoke import extract_param, coerce_int, coerce_float, coerce_str, parse_context, build_invoke_stream_key
 from helper.models import ModelListError, get_models_list
 from helper.request import Request
 from helper.redis import handle_context_limits, RedisManager
@@ -404,104 +405,178 @@ def stream(msg_id, stream_key):
         mimetype='text/event-stream'
     )
 
-# 处理直接请求
-@app.route('/invoke', methods=['POST', 'GET'])
-def invoke():
-    # 优先从 header 获取配置，如果不存在则从 POST 参数获取
-    text = request.args.get('text') or request.form.get('text')
-    model_type = request.args.get('model_type') or request.form.get('model_type') or 'openai'
-    model_name = request.args.get('model_name') or request.form.get('model_name') or 'gpt-5-nano'
-    system_message = request.args.get('system_message') or request.form.get('system_message')
-    api_key = request.args.get('api_key') or request.form.get('api_key')
-    base_url = request.args.get('base_url') or request.form.get('base_url')
-    agency = request.args.get('agency') or request.form.get('agency')
-    temperature = float(request.args.get('temperature') or request.form.get('temperature') or 0.7)
-    max_tokens = int(request.args.get('max_tokens') or request.form.get('max_tokens') or 0)
-    thinking = int(request.args.get('thinking') or request.form.get('thinking') or 0)
-    before_text = request.args.get('before_text') or request.form.get('before_text')
-    context_key = request.args.get('context_key') or request.form.get('context_key')
-    context_limit = int(request.args.get('context_limit') or request.form.get('context_limit') or 0)
-    
-    # 检查必要参数是否为空
-    if not all([text, api_key]):
-        return jsonify({"code": 400, "error": "Parameter error"})
+# 直连模型：提交参数生成 stream_key，再用 SSE GET 获取响应
+@app.route('/invoke/auth', methods=['POST', 'GET'])
+def invoke_auth():
+    """
+    创建直连流请求并返回可供 SSE 连接的 stream_key。
+    """
+    payload = request.get_json(silent=True) or {}
 
-    # 上下文 before_text 处理
-    if not before_text:
-        before_text = []
-    elif isinstance(before_text, str):
-        before_text = [['human', before_text]]
-    elif isinstance(before_text, list):
-        if before_text and isinstance(before_text[0], str):
-            before_text = [['human', text] for text in before_text]
+    context_messages = parse_context(extract_param(request, payload, "context"))
+    model_type = coerce_str(extract_param(request, payload, "model_type"), "openai") or "openai"
+    model_name = coerce_str(extract_param(request, payload, "model_name"), "gpt-5-nano") or "gpt-5-nano"
+    api_key = coerce_str(extract_param(request, payload, "api_key"))
+    base_url = coerce_str(extract_param(request, payload, "base_url"))
+    agency = coerce_str(extract_param(request, payload, "agency"))
+    temperature = coerce_float(extract_param(request, payload, "temperature"), 0.7)
+    max_tokens = coerce_int(extract_param(request, payload, "max_tokens"), 0)
+    thinking = coerce_int(extract_param(request, payload, "thinking"), 0)
+    if not api_key:
+        return jsonify({"code": 400, "error": "api_key is required"}), 400
+    if not context_messages:
+        return jsonify({"code": 400, "error": "context is required"}), 400
 
-    # 获取模型实例
-    model = get_model_instance(
-        model_type=model_type,
-        model_name=model_name,
-        api_key=api_key,
-        base_url=base_url,
-        agency=agency,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        thinking=thinking,
-        streaming=False,
-    )
+    stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    storage_key = build_invoke_stream_key(stream_key)
+    redis_manager.set_input(storage_key, {
+        "final_context": [[role, content] for role, content in context_messages],
+        "model_type": model_type,
+        "model_name": model_name,
+        "api_key": api_key,
+        "base_url": base_url,
+        "agency": agency,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "thinking": thinking,
+        "status": "pending",
+        "response": "",
+        "created_at": int(time.time()),
+    })
 
-    # 前置上下文
-    pre_context = []
+    return jsonify({
+        "code": 200,
+        "data": {
+            "stream_key": stream_key,
+            "stream_url": f"/invoke/stream/{stream_key}"
+        }
+    })
 
-    # 添加系统消息到上下文开始
-    if system_message:
-        pre_context.append(("system", system_message))
+# 直连模型：通过 stream_key 建立 SSE 拉取 AI 输出
+@app.route('/invoke/stream/<stream_key>', methods=['GET'])
+def invoke_stream(stream_key):
+    """
+    使用 stream_key 建立直连 SSE 连接。
+    """
+    if not stream_key:
+        return Response(
+            "id: invoke\nevent: done\ndata: {}\n\n",
+            mimetype='text/event-stream'
+        )
 
-    # 添加 before_text 到上下文
-    if before_text:
-        # 优化处理不同模型的上下文添加逻辑
-        models_need_confirmation = {"deepseek-reasoner", "deepseek-coder"}
-        for item in before_text:
-            pre_context.append(item)
-            if model_name in models_need_confirmation:
-                pre_context.append(("assistant", "好的，明白了。"))
+    storage_key = build_invoke_stream_key(stream_key)
+    data = redis_manager.get_input(storage_key)
+    if not data:
+        return Response(
+            f"id: {stream_key}\nevent: done\ndata: {json_error('Invalid stream key')}\n\n",
+            mimetype='text/event-stream'
+        )
 
-    # 获取现有上下文
-    middle_context = redis_manager.get_context(f"invoke_{context_key}")
+    if data.get("status") == "finished" and data.get("response") is not None:
+        return Response(
+            f"id: {stream_key}\nevent: replace\ndata: {json_content(data.get('response', ''))}\n\n"
+            f"id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n",
+            mimetype='text/event-stream'
+        )
 
-    # 添加用户的新消息
-    end_context = [("human", text)]
+    if data.get("status") == "processing":
+        return Response(
+            f"id: {stream_key}\nevent: done\ndata: {json_error('Stream is processing')}\n\n",
+            mimetype='text/event-stream'
+        )
 
-    # 处理模型限制
-    final_context = handle_context_limits(
-        pre_context = pre_context,
-        middle_context = middle_context,
-        end_context = end_context,
-        model_type=model_type, 
-        model_name=model_name, 
-        custom_limit=context_limit
-    )
+    stored_context = data.get("final_context") or []
+    final_context = parse_context(stored_context)
+    if not final_context:
+        return Response(
+            f"id: {stream_key}\nevent: done\ndata: {json_error('No context found')}\n\n",
+            mimetype='text/event-stream'
+        )
 
-    # 开始请求直接响应
     try:
-        response = model.invoke(final_context)
-        resContent = replace_think_content(response.content)
-        if context_key:
-            redis_manager.extend_contexts(f"invoke_{context_key}", [
-                ("human", text),
-                ("assistant", remove_reasoning_content(resContent))
-            ], model_type, model_name, context_limit)
-        return jsonify({
-            "code": 200, 
-            "data": {
-                "content": resContent,
-                "usage": {
-                    "total_tokens": response.usage_metadata.get("total_tokens", 0),
-                    "prompt_tokens": response.usage_metadata.get("input_tokens", 0),
-                    "completion_tokens": response.usage_metadata.get("output_tokens", 0)
-                }
-            }
-        })
-    except Exception as e:
-        return jsonify({"code": 500, "error": str(e)})
+        model = get_model_instance(
+            model_type=data["model_type"],
+            model_name=data["model_name"],
+            api_key=data["api_key"],
+            base_url=data["base_url"],
+            agency=data["agency"],
+            temperature=data["temperature"],
+            max_tokens=data["max_tokens"],
+            thinking=data["thinking"],
+            streaming=True,
+        )
+    except Exception as exc:
+        return Response(
+            f"id: {stream_key}\nevent: done\ndata: {json_error(str(exc))}\n\n",
+            mimetype='text/event-stream'
+        )
+
+    def stream_invoke_response():
+        response_text = ""
+        last_sent = ""
+        has_reasoning = False
+        is_response = False
+        data["status"] = "processing"
+        redis_manager.set_input(storage_key, data)
+        try:
+            for chunk in model.stream(final_context):
+                if hasattr(chunk, "content") and isinstance(chunk.content, list):
+                    should_continue = True
+                    if chunk.content:
+                        chunk = SimpleNamespace(**chunk.content[0])
+                        if hasattr(chunk, "type"):
+                            if chunk.type == "thinking" and hasattr(chunk, "thinking"):
+                                chunk = SimpleNamespace(reasoning_content=chunk.thinking)
+                                should_continue = False
+                            elif chunk.type == "reasoning" and hasattr(chunk, "reasoning"):
+                                chunk = SimpleNamespace(reasoning_content=chunk.reasoning)
+                                should_continue = False
+                            elif chunk.type == "text" and hasattr(chunk, "text"):
+                                chunk = SimpleNamespace(content=chunk.text)
+                                should_continue = False
+                    if should_continue:
+                        continue
+
+                if hasattr(chunk, "reasoning_content") and chunk.reasoning_content and not is_response:
+                    if not has_reasoning:
+                        response_text += "::: reasoning\n"
+                        has_reasoning = True
+                    response_text += chunk.reasoning_content
+                    response_text = replace_think_content(response_text)
+                if hasattr(chunk, "content") and chunk.content:
+                    if has_reasoning:
+                        response_text += "\n:::\n\n"
+                        has_reasoning = False
+                    is_response = True
+                    response_text += chunk.content
+                    response_text = replace_think_content(response_text)
+
+                if response_text != last_sent:
+                    if last_sent and response_text.startswith(last_sent):
+                        delta = response_text[len(last_sent):]
+                        event_type = "append"
+                    else:
+                        delta = response_text
+                        event_type = "replace"
+                    if delta:
+                        yield f"id: {stream_key}\nevent: {event_type}\ndata: {json_content(delta)}\n\n"
+                    last_sent = response_text
+
+            data["status"] = "finished"
+            data["response"] = response_text
+            redis_manager.set_input(storage_key, data)
+            yield f"id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n"
+        except Exception as exc:
+            data["status"] = "finished"
+            data["response"] = response_text or str(exc)
+            data["error"] = str(exc)
+            redis_manager.set_input(storage_key, data)
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error(str(exc))}\n\n"
+
+    return Response(
+        stream_with_context(stream_invoke_response()),
+        mimetype='text/event-stream'
+    )
 
 # 前端 UI 首页路由
 @app.route('/')
