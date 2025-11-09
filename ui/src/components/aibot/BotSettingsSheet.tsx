@@ -329,7 +329,7 @@ export const BotSettingsSheet = ({
       <Sheet open={open} onOpenChange={onOpenChange}>
         <SheetContent
           side="right"
-          className="flex w-full max-w-3xl flex-col gap-6 overflow-hidden"
+          className="flex w-full max-w-2xl sm:max-w-4xl lg:max-w-4xl flex-col gap-6 overflow-hidden"
           onEscapeKeyDown={(event) => event.preventDefault()}
         >
           <SheetHeader>
