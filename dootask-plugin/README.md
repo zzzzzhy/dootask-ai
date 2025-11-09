@@ -1,8 +1,8 @@
-# AI Plugin
+# AI Assistant Plugin
 
 ## Overview
 
-The AI Plugin brings intelligent capabilities to DooTask by integrating several leading large language models, including:
+This Plugin brings intelligent capabilities to DooTask by integrating several leading large language models, including:
 
 * ChatGPT (OpenAI)
 * Claude (Anthropic)
@@ -10,7 +10,9 @@ The AI Plugin brings intelligent capabilities to DooTask by integrating several 
 * Gemini (Google)
 * Grok (xAI)
 * Ollama (supports local model deployment)
-* Zhipu Qingyan, Tongyi Qianwen, Wenxin Yiyan
+* Zhipu Qingyan
+* Tongyi Qianwen
+* Wenxin Yiyan
 
 Once installed, users can configure and access these AI models within DooTask for various scenarios such as task suggestions, content generation, meeting summaries, and project planning, significantly boosting team productivity.
 

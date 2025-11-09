@@ -1,6 +1,6 @@
 name: 
-  en: AI Robot
-  zh: AI 机器人
+  en: AI Assistants
+  zh: AI 助手
 description:
   en: Support multiple AI models, support custom models.
   zh: 支持多种 AI 模型的强大工具，支持自定义模型。
@@ -10,4 +10,4 @@ github: https://github.com/kuaifan/dootask-ai
 document: https://github.com/kuaifan/dootask-ai
 tags:
   - AI
-  - 机器人
+  - 助手

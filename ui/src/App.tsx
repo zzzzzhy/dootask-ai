@@ -121,14 +121,14 @@ function App() {
     }
 
     init().catch((error) => {
-      console.error("Failed to initialize AI bot UI", error)
+      console.error("Failed to initialize AI assistant UI", error)
     })
   }, [])
 
   const refreshBotTags = async () => {
     try {
       const { data } = await requestAPI({
-        url: "system/setting/aibot_models",
+        url: "assistant/models",
         method: "get",
       })
       if (!data || typeof data !== "object") {
@@ -152,7 +152,7 @@ function App() {
         }),
       )
     } catch (error) {
-      console.error("Failed to fetch AI bot models", error)
+      console.error("Failed to fetch AI assistant models", error)
     }
   }
 

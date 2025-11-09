@@ -49,7 +49,7 @@ const AIBOT_DEFINITIONS: AIBotDefinition[] = [
     },
     src: "/ai/ui/avatars/claude.png",
     desc: {
-      zh: "我是 Claude，由 Anthropic 公司创造出来的 AI 助手机器人。我的工作是帮助人类，与人对话并给出解答。",
+      zh: "我是 Claude，由 Anthropic 公司创造出来的 AI 助手。我的工作是帮助人类，与人对话并给出解答。",
       en: "I am Claude, an AI assistant created by Anthropic. I help people, hold conversations, and provide answers.",
     },
   },
@@ -73,7 +73,7 @@ const AIBOT_DEFINITIONS: AIBotDefinition[] = [
     },
     src: "/ai/ui/avatars/gemini.png",
     desc: {
-      zh: "我是由 Google 开发的生成式人工智能聊天机器人。它基于同名的 Gemini 系列大型语言模型，是应对 ChatGPT 崛起而开发的。",
+      zh: "我是由 Google 开发的生成式人工智能助手。它基于同名的 Gemini 系列大型语言模型，是应对 ChatGPT 崛起而开发的。",
       en: "I am Gemini, a generative AI chatbot developed by Google. Built on the Gemini family of large models, I was created in response to the rise of ChatGPT.",
     },
   },
@@ -85,7 +85,7 @@ const AIBOT_DEFINITIONS: AIBotDefinition[] = [
     },
     src: "/ai/ui/avatars/grok.png",
     desc: {
-      zh: "Grok 是由 xAI 开发的生成式人工智能聊天机器人，旨在通过实时回答用户问题来提供帮助。",
+      zh: "Grok 是由 xAI 开发的生成式人工智能助手，旨在通过实时回答用户问题来提供帮助。",
       en: "Grok is a generative AI chatbot from xAI designed to help by answering user questions in real time.",
     },
   },
