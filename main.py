@@ -578,6 +578,68 @@ def invoke_stream(stream_key):
         mimetype='text/event-stream'
     )
 
+# 直连模型：同步返回完整响应，不使用流式输出。
+@app.route('/invoke/synch', methods=['POST', 'GET'])
+def invoke_synch():
+    """
+    直连模型：同步返回完整响应，不使用流式输出。
+    """
+    payload = request.get_json(silent=True) or {}
+
+    context_messages = parse_context(extract_param(request, payload, "context"))
+    model_type = coerce_str(extract_param(request, payload, "model_type"), "openai") or "openai"
+    model_name = coerce_str(extract_param(request, payload, "model_name"), "gpt-5-nano") or "gpt-5-nano"
+    api_key = coerce_str(extract_param(request, payload, "api_key"))
+    base_url = coerce_str(extract_param(request, payload, "base_url"))
+    agency = coerce_str(extract_param(request, payload, "agency"))
+    temperature = coerce_float(extract_param(request, payload, "temperature"), 0.7)
+    max_tokens = coerce_int(extract_param(request, payload, "max_tokens"), 0)
+    thinking = coerce_int(extract_param(request, payload, "thinking"), 0)
+
+    if not api_key:
+        return jsonify({"code": 400, "error": "api_key is required"}), 400
+    if not context_messages:
+        return jsonify({"code": 400, "error": "context is required"}), 400
+
+    try:
+        model = get_model_instance(
+            model_type=model_type,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            agency=agency,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            thinking=thinking,
+            streaming=False,
+        )
+    except Exception as exc:
+        return jsonify({"code": 400, "error": str(exc)}), 400
+
+    try:
+        result = model.invoke(context_messages)
+        response_text = getattr(result, "content", result)
+        if isinstance(response_text, list):
+            parts = []
+            for part in response_text:
+                if isinstance(part, dict):
+                    parts.append(
+                        part.get("text")
+                        or part.get("content")
+                        or part.get("input_text")
+                        or ""
+                    )
+                else:
+                    parts.append(str(part))
+            response_text = "".join(parts)
+        elif not isinstance(response_text, str):
+            response_text = str(response_text)
+        response_text = replace_think_content(response_text)
+        response_text = remove_reasoning_content(response_text)
+        return jsonify({"code": 200, "data": {"content": response_text}})
+    except Exception as exc:
+        return jsonify({"code": 500, "error": str(exc)}), 500
+
 # 前端 UI 首页路由
 @app.route('/')
 def root():
