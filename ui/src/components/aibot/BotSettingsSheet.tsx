@@ -198,7 +198,7 @@ export const BotSettingsSheet = ({
             </Button>
           </div>
           {(field.link || field.tip) && (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground break-all">
               {field.link ? (
                 <>
                   {field.tipPrefix ?? t("sheet.tipPrefix")}{" "}
@@ -302,7 +302,7 @@ export const BotSettingsSheet = ({
         <Label className="text-sm font-medium">{field.label}</Label>
         {renderControl()}
         {(field.link || field.tip) && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground break-all">
             {field.link ? (
               <>
                 {field.tipPrefix ?? t("sheet.tipPrefix")}{" "}
