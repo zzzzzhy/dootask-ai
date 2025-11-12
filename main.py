@@ -8,14 +8,11 @@ from helper.utils import convert_message_content_to_string, dict_to_message, get
 from helper.request import RequestClient
 from helper.invoke import parse_context, build_invoke_stream_key
 from helper.redis import handle_context_limits, RedisManager
-# from helper.thread_pool import DynamicThreadPoolExecutor
 from helper.config import SERVER_PORT, CLEAR_COMMANDS, STREAM_TIMEOUT, END_CONVERSATION_MARK
 import json
 import time
 import random
 import string
-# from typing import Optional
-# from pydantic import BaseModel
 import httpx
 from langchain_mcp_adapters.client import MultiServerMCPClient
 import asyncio
@@ -96,15 +93,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# 初始化线程池
-# thread_pool = DynamicThreadPoolExecutor(
-#     min_workers=5,
-#     max_workers=50,
-#     thread_name_prefix="ai_stream_"
-# )
-
-
 
 
 @app.api_route("/chat", methods=["GET", "POST"])
@@ -228,7 +216,6 @@ async def chat(request: Request):
         "version": version,
         "msg_user_token": params.get("msg_user[token]"),
         "before_text": before_text,
-        # "use_dootaskmcp": True,
         "model_type": model_type,
         "model_name": model_name,
         "system_message": system_message,
@@ -488,7 +475,6 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
         
         # 如果是第一个请求，启动异步生产者
         if await app.state.redis_manager.set_cache(msg_key, "", ex=STREAM_TIMEOUT, nx=True):
-            # thread_pool.submit(stream_generate, msg_id, msg_key, data, app.state.redis_manager)
             producer_task = asyncio.create_task(stream_generate(msg_id, msg_key, data, app.state.redis_manager))
 
         # 所有请求都作为消费者处理
@@ -535,7 +521,6 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
 
             # 睡眠等待
             await asyncio.sleep(sleep_interval)
-            # time.sleep(sleep_interval)
 
     # 返回流式响应
     return StreamingResponse(

@@ -165,15 +165,6 @@ class RedisManager:
         # 确保 value 是列表格式
         if not isinstance(value, list):
             raise ValueError("Context must be a list of tuples")
-        # 处理模型限制
-        # final_context = handle_context_limits(
-        #     pre_context=[],
-        #     middle_context=value,
-        #     end_context=[],
-        #     model_type=model_type,
-        #     model_name=model_name,
-        #     custom_limit=context_limit
-        # )
         # 保存到 Redis
         await self.client.set(self._make_key("context", key), json.dumps(value))
 

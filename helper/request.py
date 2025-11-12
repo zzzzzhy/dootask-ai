@@ -81,5 +81,4 @@ class RequestClient:
                 )
                 return response.json().get('data', {}).get('id')
         except Exception as e:
-            # print(f"Error in request: {str(e)}")
             return None
