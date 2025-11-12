@@ -1,6 +1,8 @@
 dashscope
-flask
-flask-cors>=5.0.0
+fastapi
+fastmcp
+langchain-mcp-adapters 
+langgraph
 httpx[socks]
 langchain
 langchain-core
@@ -14,6 +16,7 @@ langchain-ollama
 langchain-text-splitters
 pyjwt
 qianfan
-redis>=5.0.0
-requests>=2.31.0
+redis
 tiktoken
+uvicorn
+pysocks

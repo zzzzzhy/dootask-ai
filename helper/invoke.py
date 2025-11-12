@@ -1,25 +1,26 @@
 import json
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
-from flask import Request as FlaskRequest
+# from flask import Request as FlaskRequest
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 Message = Tuple[str, str]
 RawContext = Union[str, Dict[str, Any], Sequence[Any], None]
 
 
-def extract_param(request_obj: FlaskRequest, payload: Dict[str, Any], key: str, default: Any = None) -> Any:
-    """
-    获取参数，优先 JSON，其次 form，再其次 query。
-    """
-    if isinstance(payload, dict) and key in payload:
-        return payload[key]
-    if request_obj.form and key in request_obj.form:
-        value = request_obj.form.get(key)
-        if value is not None:
-            return value
-    value = request_obj.args.get(key)
-    if value is not None:
-        return value
-    return default
+# def extract_param(request_obj: FlaskRequest, payload: Dict[str, Any], key: str, default: Any = None) -> Any:
+#     """
+#     获取参数，优先 JSON，其次 form，再其次 query。
+#     """
+#     if isinstance(payload, dict) and key in payload:
+#         return payload[key]
+#     if request_obj.form and key in request_obj.form:
+#         value = request_obj.form.get(key)
+#         if value is not None:
+#             return value
+#     value = request_obj.args.get(key)
+#     if value is not None:
+#         return value
+#     return default
 
 
 def coerce_int(value: Any, default: int = 0) -> int:
@@ -58,7 +59,7 @@ def _normalize_role(role: Any) -> Any:
     return role
 
 
-def _normalize_message(item: Any) -> Optional[Message]:
+def _normalize_message(item: Any) -> Optional[BaseMessage]:
     role = None
     content = None
     if isinstance(item, dict):
@@ -70,9 +71,23 @@ def _normalize_message(item: Any) -> Optional[Message]:
         role, content = "human", item
     elif item is not None:
         role, content = "human", str(item)
-    if role and content is not None:
-        return (_normalize_role(role), str(content))
-    return None
+    # 无内容则返回 None
+    if not content:
+        return None
+
+    # 角色标准化
+    normalized_role = _normalize_role(role)
+
+    # 构造 LangChain 消息对象
+    if normalized_role == "human":
+        return HumanMessage(content=str(content))
+    elif normalized_role == "assistant":
+        return AIMessage(content=str(content))
+    elif normalized_role == "system":
+        return SystemMessage(content=str(content))
+    else:
+        # 默认安全回退
+        return HumanMessage(content=str(content))
 
 
 def parse_context(raw_context: RawContext) -> List[Message]:

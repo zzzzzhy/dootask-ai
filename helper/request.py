@@ -1,6 +1,6 @@
-import requests
+import httpx
 
-class Request:
+class RequestClient:
     """
     请求类，用于处理与服务器的通信
     """
@@ -38,7 +38,7 @@ class Request:
         else:
             return f"{server_url}/api/dialog/msg/sendtext"
 
-    def call(self, data, **kwargs):
+    async def call(self, data, **kwargs):
         """
         发送请求到服务器
         :param data: 请求数据
@@ -72,13 +72,14 @@ class Request:
             request_data['dialog_id'] = self.dialog_id
 
         try:
-            response = requests.post(
-                call_url,
-                headers=headers,
-                json=request_data,
-                timeout=kwargs.get('timeout', 15)
-            )
-            response_json = response.json()
-            return response_json.get('data', {}).get('id')
-        except Exception:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    call_url,
+                    headers=headers,
+                    json=request_data,
+                    timeout=kwargs.get('timeout', 15)
+                )
+                return response.json().get('data', {}).get('id')
+        except Exception as e:
+            # print(f"Error in request: {str(e)}")
             return None

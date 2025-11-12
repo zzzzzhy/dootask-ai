@@ -10,12 +10,13 @@ from langchain_community.chat_models import (
     ChatCohere
 )
 from .deepseek import DeepseekChatOpenAI
-from .request import Request
+from .request import RequestClient
 from .redis import RedisManager
 import os
 import time
 import json
 import re
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 # 预编译正则表达式
 _THINK_START_PATTERN = re.compile(r'<think>\s*')
@@ -80,7 +81,7 @@ def get_model_instance(model_type, model_name, api_key, **kwargs):
         if model_type == "openai":
             if thinking > 0:
                 config.update({"reasoning_effort": "medium"})
-            elif "gpt-5" in model_name.lower():
+            elif "gpt-5" in model_name.lower() and model_name != "gpt-5-chat-latest":
                 config.update({"reasoning_effort": "minimal"})
         else:
             if thinking > 0:
@@ -113,7 +114,7 @@ def check_timeouts():
                         data["status"] = "finished"
                         data["response"] = "Request timeout. Please try again."
                         redis_manager.set_input(key_id, data)
-                        request_client = Request(
+                        request_client = RequestClient(
                             server_url=data["server_url"],
                             version=data["version"],
                             token=data["token"],
@@ -248,3 +249,46 @@ def process_html_content(text):
     text = img_pattern.sub(replace_img_without_alt, text)
     
     return text
+
+def remove_tool_calls(content: str | list[str | dict]) -> str | list[str | dict]:
+    """Remove tool calls from content."""
+    if isinstance(content, str):
+        return content
+    # Currently only Anthropic models stream tool calls, using content item type tool_use.
+    return [
+        content_item
+        for content_item in content
+        if isinstance(content_item, str) or content_item["type"] != "tool_use"
+    ]
+def convert_message_content_to_string(content: str | list[str | dict]) -> str:
+    if isinstance(content, str):
+        return content
+    text: list[str] = []
+    for content_item in content:
+        if isinstance(content_item, str):
+            text.append(content_item)
+            continue
+        if content_item["type"] == "text":
+            text.append(content_item["text"])
+    return "".join(text)
+
+# 转换为可序列化的字典格式
+def message_to_dict(message):
+    if isinstance(message, HumanMessage):
+        return {"type": "human", "content": message.content}
+    elif isinstance(message, AIMessage):
+        return {"type": "ai", "content": message.content}
+    elif isinstance(message, SystemMessage):
+        return {"type": "system", "content": message.content}
+    else:
+        raise TypeError("Unknown message type")
+
+def dict_to_message(d):
+    if d["type"] == "human":
+        return HumanMessage(content=d["content"])
+    elif d["type"] == "ai":
+        return AIMessage(content=d["content"])
+    elif d["type"] == "system":
+        return SystemMessage(content=d["content"])
+    else:
+        raise TypeError("Unknown message type")
