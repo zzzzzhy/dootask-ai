@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from pathlib import Path
-from fastapi import FastAPI, Request, Response, HTTPException, File, UploadFile, Header
+from fastapi import FastAPI, Request, Header
 from fastapi.concurrency import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.params import Form
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
 from helper.utils import convert_message_content_to_string, dict_to_message, get_model_instance, get_swagger_ui, json_empty, json_error, json_content, message_to_dict, remove_tool_calls, replace_think_content, remove_reasoning_content, process_html_content
 from helper.request import RequestClient
+from helper.invoke import parse_context, build_invoke_stream_key
 from helper.redis import handle_context_limits, RedisManager
 # from helper.thread_pool import DynamicThreadPoolExecutor
 from helper.config import SERVER_PORT, CLEAR_COMMANDS, STREAM_TIMEOUT, END_CONVERSATION_MARK
@@ -543,28 +543,13 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
         media_type='text/event-stream'
     )
 
-def parse_langchain_response(messages: list) -> dict:
+# 直连模型：提交参数生成 stream_key，再用 SSE GET 获取响应
+@app.post('/invoke/auth')
+@app.get('/invoke/auth')
+async def invoke_auth(request: Request, token: str = Header(..., alias="Authorization")):
     """
-    正确处理LangChain消息对象的解析函数
+    创建直连流请求并返回可供 SSE 连接的 stream_key。
     """
-    result = {
-        "final_response": "",
-        "metadata": {}
-    }
-    
-    for msg in messages:
-        if isinstance(msg, AIMessage) and msg.response_metadata.get("finish_reason") == "stop":
-            result["final_response"] = msg.content
-            result["metadata"].update({
-                "model_name": msg.response_metadata.get("model_name"),
-                "prompt_tokens": msg.response_metadata.get("token_usage",{}).get("prompt_tokens"),
-                "total_tokens": msg.response_metadata.get("token_usage",{}).get("total_tokens")
-            })
-    return result
-
-# 处理直接请求
-@app.post('/invoke')
-async def invoke(request: Request, host: str = Header(..., alias="Host"), scheme: str = Header(..., alias="scheme")):
     if request.method == "GET":
         params = dict(request.query_params)
     else:
@@ -576,7 +561,243 @@ async def invoke(request: Request, host: str = Header(..., alias="Host"), scheme
         'max_tokens': 0,
         'temperature': 0.7,
         'thinking': 0,
-        'context_limit': 0,
+    }
+    
+    # 应用默认值和类型转换
+    for key, default_value in defaults.items():
+        value = params.get(key, default_value)
+        if isinstance(default_value, int):
+            try:
+                params[key] = int(value)
+            except (ValueError, TypeError):
+                params[key] = default_value
+        else:
+            params[key] = value
+    
+    context_messages = parse_context(params.get("context"))
+    logger.info(f"Context messages: {context_messages}")
+    api_key = params.get('api_key')
+    base_url = params.get('base_url')
+    agency = params.get('agency')
+
+    model_type, model_name, max_tokens, temperature, thinking = (
+        params[k] for k in defaults.keys()
+    )
+
+    # 检查必要参数是否为空
+    if not all([context_messages, api_key]):
+        return JSONResponse(content={"code": 400, "error": "Parameter error"}, status_code=200)
+    
+    stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    storage_key = build_invoke_stream_key(stream_key)
+
+    await app.state.redis_manager.set_input(storage_key, {
+        "final_context": [message_to_dict(content) for content in context_messages],
+        "model_type": model_type,
+        "model_name": model_name,
+        "api_key": api_key,
+        "base_url": base_url,
+        "user_token": token,
+        "agency": agency,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "thinking": thinking,
+        "status": "pending",
+        "response": "",
+        "created_at": int(time.time()),
+    })
+
+    return JSONResponse(
+        content={
+        "code": 200, 
+        "data": {
+            "stream_key": stream_key,
+            "stream_url": f"/invoke/stream/{stream_key}"
+        }
+    })
+
+# 处理直接请求
+@app.post('/invoke/stream/{stream_key}')
+@app.get('/invoke/stream/{stream_key}')
+async def invoke(request: Request, stream_key: str):
+    if not stream_key:
+        async def error_stream():
+            yield f"id: {stream}\nevent: done\ndata: {json_error('No key')}\n\n"
+        return StreamingResponse(
+            error_stream(),
+            media_type='text/event-stream'
+        )
+    storage_key = build_invoke_stream_key(stream_key)
+    # 检查 msg_id 是否在 Redis 中
+    data = await app.state.redis_manager.get_input(storage_key)
+    if not data:
+        async def error_stream():
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error('No such ID')}\n\n"
+        return StreamingResponse(
+            error_stream(),
+            media_type='text/event-stream'
+        )
+
+
+    # 如果 status 为 finished，直接返回
+    if data["status"] == "finished" and data.get("response"):
+        async def finished_stream():
+            yield f"""
+            id: {stream_key}\nevent: replace\ndata: {json_content(data['response'])}\n\n
+            id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n
+            """
+        return StreamingResponse(
+            finished_stream(),
+            media_type='text/event-stream'
+        )    
+    
+    if data.get("status") == "processing":
+        async def processing_stream():
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error('Stream is processing')}\n\n"
+        return StreamingResponse(
+            processing_stream(),
+            media_type='text/event-stream'
+        )    
+
+    stored_context = data.get("final_context") or []
+    final_context = parse_context(stored_context)
+    if not final_context:
+        async def no_context_stream():
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error('No context found')}\n\n"
+        return StreamingResponse(
+            no_context_stream(),
+            media_type='text/event-stream'
+        )
+    
+    try:
+
+        model = get_model_instance(
+            model_type=data["model_type"],
+            model_name=data["model_name"],
+            api_key=data["api_key"],
+            base_url=data["base_url"],
+            agency=data["agency"],
+            temperature=data["temperature"],
+            max_tokens=data["max_tokens"],
+            thinking=data["thinking"],
+            streaming=True,
+        )
+        host = request.headers.get("Host")
+        tools = []
+        if app.state.mcp:
+            client = MultiServerMCPClient(
+                {
+                    "dootask-task": {
+                        "url": f"https://{host}/apps/mcp_server/mcp",
+                        "transport": "streamable_http",
+                        "headers": {
+                            "token": data.get("user_token","unknown")
+                        },
+                    }
+                }
+            )
+            tools = await client.get_tools()
+        agent = create_agent(model, tools)
+
+    except Exception as exc:
+        async def model_error_stream():
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error(str(exc))}\n\n"
+        return StreamingResponse(
+            model_error_stream(),
+            media_type='text/event-stream'
+        )
+
+    async def stream_invoke_response():
+        response_text = ""
+        last_sent = ""
+        has_reasoning = False
+        is_response = False
+        data["status"] = "processing"
+        await app.state.redis_manager.set_input(storage_key, data)
+        try:
+            async for chunk in agent.astream({"messages": final_context}, stream_mode="messages"):
+                # logger.info(chunk)
+                msg, metadata = chunk
+                if "skip_stream" in metadata.get("tags", []):
+                    continue
+                # For some reason, astream("messages") causes non-LLM nodes to send extra messages.
+                # Drop them.
+                if not isinstance(msg, AIMessageChunk):
+                    continue
+                if hasattr(chunk, "content") and isinstance(msg.content, list):
+                    should_continue = True
+                    if msg.content:
+                        chunk = SimpleNamespace(**msg.content[0])
+                        if hasattr(chunk, "type"):
+                            if chunk.type == "thinking" and hasattr(chunk, "thinking"):
+                                chunk = SimpleNamespace(reasoning_content=chunk.thinking)
+                                should_continue = False
+                            elif chunk.type == "reasoning" and hasattr(chunk, "reasoning"):
+                                chunk = SimpleNamespace(reasoning_content=chunk.reasoning)
+                                should_continue = False
+                            elif chunk.type == "text" and hasattr(chunk, "text"):
+                                chunk = SimpleNamespace(content=chunk.text)
+                                should_continue = False
+                    if should_continue:
+                        continue
+
+                if hasattr(msg, "reasoning_content") and msg.reasoning_content and not is_response:
+                    if not has_reasoning:
+                        response_text += "::: reasoning\n"
+                        has_reasoning = True
+                    response_text += msg.reasoning_content
+                    response_text = replace_think_content(response_text)
+                if hasattr(msg, "content") and msg.content:
+                    if has_reasoning:
+                        response_text += "\n:::\n\n"
+                        has_reasoning = False
+                    is_response = True
+                    response_text += msg.content
+                    response_text = replace_think_content(response_text)
+
+                if response_text != last_sent:
+                    if last_sent and response_text.startswith(last_sent):
+                        delta = response_text[len(last_sent):]
+                        event_type = "append"
+                    else:
+                        delta = response_text
+                        event_type = "replace"
+                    if delta:
+                        yield f"id: {stream_key}\nevent: {event_type}\ndata: {json_content(delta)}\n\n"
+                    last_sent = response_text
+
+            data["status"] = "finished"
+            data["response"] = response_text
+            app.state.redis_manager.set_input(storage_key, data)
+            yield f"id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n"
+        except Exception as exc:
+            data["status"] = "finished"
+            data["response"] = response_text or str(exc)
+            data["error"] = str(exc)
+            app.state.redis_manager.set_input(storage_key, data)
+            yield f"id: {stream_key}\nevent: done\ndata: {json_error(str(exc))}\n\n"
+    return StreamingResponse(
+        stream_invoke_response(),
+        media_type='text/event-stream'
+    )
+    
+# 直连模型：同步返回完整响应，不使用流式输出。
+@app.api_route('/invoke/synch', methods=['POST', 'GET'])
+async def invoke_synch(request: Request, token: str = Header(..., alias="Authorization")):
+    """
+    直连模型：同步返回完整响应，不使用流式输出。
+    """
+    if request.method == "GET":
+        params = dict(request.query_params)
+    else:
+        form_data = await request.form()
+        params = dict(form_data)
+    defaults = {
+        'model_type': 'openai',
+        'model_name': 'gpt-5-chat',
+        'max_tokens': 0,
+        'temperature': 0.7,
+        'thinking': 0,
     }
     
     # 应用默认值和类型转换
@@ -590,140 +811,61 @@ async def invoke(request: Request, host: str = Header(..., alias="Host"), scheme
         else:
             params[key] = value
 
-    text = params.get("text")
-    system_message = params.get('system_message')
+    context_messages = parse_context(params.get("context"))
+
     api_key = params.get('api_key')
     base_url = params.get('base_url')
     agency = params.get('agency')
-    before_text = params.get('before_text')
-    context_key = params.get('context_key')
-    model_type, model_name, max_tokens, temperature, thinking, context_limit = (
+
+    model_type, model_name, max_tokens, temperature, thinking = (
         params[k] for k in defaults.keys()
     )
-    
+
     # 检查必要参数是否为空
-    if not all([text, api_key]):
+    if not all([context_messages, api_key]):
         return JSONResponse(content={"code": 400, "error": "Parameter error"}, status_code=200)
-
-    # 上下文 before_text 处理
-    if not before_text:
-        before_text = []
-    elif isinstance(before_text, str):
-        before_text = [HumanMessage(content=before_text)]
-    elif isinstance(before_text, list):
-        if before_text and isinstance(before_text[0], str):
-            before_text = [HumanMessage(content=text) for text in before_text]
-
-    # 获取模型实例
-    model = get_model_instance(
-        model_type=model_type,
-        model_name=model_name,
-        api_key=api_key,
-        base_url=base_url,
-        agency=agency,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        thinking=thinking,
-        streaming=False,
-    )
-
-    # 前置上下文
-    pre_context = []
-
-    # 添加系统消息到上下文开始
-    if system_message:
-        pre_context.append(SystemMessage(content=system_message))
-
-    # 添加 before_text 到上下文
-    if before_text:
-        # 优化处理不同模型的上下文添加逻辑
-        models_need_confirmation = {"deepseek-reasoner", "deepseek-coder"}
-        for item in before_text:
-            pre_context.append(item)
-            if model_name in models_need_confirmation:
-                pre_context.append(AIMessage(content="好的，明白了。"))
-
-    # 获取现有上下文
-    middle_context = await app.state.redis_manager.get_context(f"invoke_{context_key}")
-    middle_messages = []
-    if middle_context:
-        middle_messages = [dict_to_message(msg_dict) for msg_dict in middle_context]
-    # 添加用户的新消息
-    end_context = [HumanMessage(content=text)]
-
-    # 处理模型限制
-    final_context = handle_context_limits(
-        pre_context = pre_context,
-        middle_context = middle_messages,
-        end_context = end_context,
-        model_type=model_type, 
-        model_name=model_name, 
-        custom_limit=context_limit
-    )
-    tools = []
-    if app.state.mcp:
-        client = MultiServerMCPClient(
-            {
-                "dootask-task": {
-                    "url": f"{scheme}://{host}/apps/mcp_server/mcp",
-                    "transport": "streamable_http",
-                    "headers": {
-                        "token": params.get("msg_user[token]")
-                    },
-                }
-            }
-        )
-        tools = await client.get_tools()
-    # 开始请求直接响应
+    
     try:
-        
-        agent = create_agent(model, tools)
-        response = await agent.ainvoke(final_context)
-        # response = model.invoke(final_context)
-        result = parse_langchain_response(response["messages"])
-        resContent = replace_think_content(result["final_response"])
-        if context_key:
-            await app.state.redis_manager.extend_contexts(f"invoke_{context_key}", [
-                message_to_dict(HumanMessage(content=text)),
-                message_to_dict(AIMessage(content=remove_reasoning_content(response)))
-            ], model_type, model_name, context_limit)
-        usage_metadata = {}
-        if "usage_metadata" in response:
-            usage_metadata = response["usage_metadata"]
-        elif result["metadata"]:
-            usage_metadata = {
-                "total_tokens": result["metadata"].get("total_tokens", 0),
-                "input_tokens": result["metadata"].get("prompt_tokens", 0),
-                "output_tokens": result["metadata"].get("total_tokens", 0) - result["metadata"].get("prompt_tokens", 0)
-            }
-        return JSONResponse(
-            content={
-                "code": 200, 
-                "data": {
-                    "content": resContent,
-                    "usage": {
-                        "total_tokens": usage_metadata.get("total_tokens", 0),
-                        "prompt_tokens": usage_metadata.get("input_tokens", 0),
-                        "completion_tokens": usage_metadata.get("output_tokens", 0)
+        model = get_model_instance(
+            model_type=model_type,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            agency=agency,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            thinking=thinking,
+            streaming=False,
+        )
+        host = request.headers.get("Host")
+        tools = []
+        if app.state.mcp:
+            client = MultiServerMCPClient(
+                {
+                    "dootask-task": {
+                        "url": f"https://{host}/apps/mcp_server/mcp",
+                        "transport": "streamable_http",
+                        "headers": {
+                            "token": token or "unknown"
+                        },
                     }
                 }
-            },
-            status_code=200
-        )
-    except ExceptionGroup as eg:
-        # 处理异常组中的每个异常
-        for exc in eg.exceptions:
-            if isinstance(exc, httpx.ConnectError):
-                raise HTTPException(
-                    status_code=503,
-                    detail="后端服务不可用"
-                )
-        raise HTTPException(
-            status_code=500,
-            detail="处理请求时发生多个错误"
-        )
-    except Exception as e:
-        return JSONResponse(content={"code": 500, "error": str(e)}, status_code=200)
+            )
+            tools = await client.get_tools()
+        agent = create_agent(model, tools)
+    except Exception as exc:
+        return JSONResponse(content={"code": 400, "error": str(exc)}, status_code=400)
+
+    try:
+        logger.info(context_messages)
+        result = await agent.ainvoke({"messages": context_messages})
+        response_text = result["messages"][-1].content
+        response_text = replace_think_content(response_text)
+        response_text = remove_reasoning_content(response_text)
+        return JSONResponse(content={"code": 200, "data": {"content": response_text}}, status_code=200)
+    except Exception as exc:
+        return JSONResponse(content={"code": 500, "error": str(exc)}, status_code=500)
+
 
 # 前端 UI 首页路由
 @app.get('/')

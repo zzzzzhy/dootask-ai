@@ -16,7 +16,7 @@ import os
 import time
 import json
 import re
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 # 预编译正则表达式
 _THINK_START_PATTERN = re.compile(r'<think>\s*')
@@ -278,6 +278,8 @@ def message_to_dict(message):
         return {"type": "human", "content": message.content}
     elif isinstance(message, AIMessage):
         return {"type": "ai", "content": message.content}
+    elif isinstance(message, SystemMessage):
+        return {"type": "system", "content": message.content}
     else:
         raise TypeError("Unknown message type")
 
@@ -286,5 +288,7 @@ def dict_to_message(d):
         return HumanMessage(content=d["content"])
     elif d["type"] == "ai":
         return AIMessage(content=d["content"])
+    elif d["type"] == "system":
+        return SystemMessage(content=d["content"])
     else:
         raise TypeError("Unknown message type")
