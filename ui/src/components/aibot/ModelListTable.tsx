@@ -52,15 +52,10 @@ const serializeRows = (rows: ModelTableRow[]) =>
     .join("\n")
 
 const parseRows = (value: string, previousRows: ModelTableRow[] = []) => {
-  const previousByIndex = previousRows
-  const previousByKey = new Map(
-    previousRows.map((row) => [`${row.value}|${row.label}`, row.id]),
-  )
   return parseModelNames(value).map((item, index) => {
-    const key = `${item.value}|${item.label}`
-    const existingId = previousByIndex[index]?.id ?? previousByKey.get(key)
+    const id = previousRows[index]?.id ?? `row-${createRowId()}`
     return {
-      id: existingId ?? `row-${createRowId()}`,
+      id,
       value: item.value,
       label: item.label,
     }
