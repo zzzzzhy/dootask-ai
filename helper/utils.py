@@ -260,6 +260,7 @@ def remove_tool_calls(content: str | list[str | dict]) -> str | list[str | dict]
         for content_item in content
         if isinstance(content_item, str) or content_item["type"] != "tool_use"
     ]
+    
 def convert_message_content_to_string(content: str | list[str | dict]) -> str:
     if isinstance(content, str):
         return content
@@ -283,12 +284,13 @@ def message_to_dict(message):
     else:
         raise TypeError("Unknown message type")
 
+# 从字典格式转换为消息对象
 def dict_to_message(d):
-    if d["type"] == "human":
-        return HumanMessage(content=d["content"])
-    elif d["type"] == "ai":
-        return AIMessage(content=d["content"])
-    elif d["type"] == "system":
-        return SystemMessage(content=d["content"])
+    if d.get("type") == "human":
+        return HumanMessage(content=d.get("content"))
+    elif d.get("type") == "ai":
+        return AIMessage(content=d.get("content"))
+    elif d.get("type") == "system":
+        return SystemMessage(content=d.get("content"))
     else:
         raise TypeError("Unknown message type")

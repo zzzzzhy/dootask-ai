@@ -279,10 +279,8 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
     # 如果 status 为 finished，直接返回
     if data["status"] == "finished":
         async def finished_stream():
-            yield f"""
-            id: {msg_id}\nevent: replace\ndata: {json_content(data['response'])}\n\n
-            id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n
-            """
+            yield f"id: {msg_id}\nevent: replace\ndata: {json_content(data['response'])}\n\n"
+            yield f"id: {msg_id}\nevent: done\ndata: {json_empty()}\n\n"
         return StreamingResponse(
             finished_stream(),
             media_type='text/event-stream'
@@ -627,10 +625,8 @@ async def invoke(request: Request, stream_key: str):
     # 如果 status 为 finished，直接返回
     if data["status"] == "finished" and data.get("response"):
         async def finished_stream():
-            yield f"""
-            id: {stream_key}\nevent: replace\ndata: {json_content(data['response'])}\n\n
-            id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n
-            """
+            yield f"id: {stream_key}\nevent: replace\ndata: {json_content(data['response'])}\n\n"
+            yield f"id: {stream_key}\nevent: done\ndata: {json_empty()}\n\n"
         return StreamingResponse(
             finished_stream(),
             media_type='text/event-stream'
