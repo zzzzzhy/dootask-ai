@@ -8,7 +8,7 @@ langchain
 langchain-core
 langchain-anthropic
 langchain-community
-langchain-deepseek-official
+langchain-deepseek
 langchain-google-genai
 langchain-xai
 langchain-openai

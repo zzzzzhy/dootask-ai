@@ -7,7 +7,7 @@ COPY ui .
 RUN npm run build
 
 # Python 依赖构建阶段
-FROM python:3.11-slim-bookworm AS builder
+FROM python:3.12-slim-bookworm AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -28,19 +28,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY requirements.txt .
 
 # 安装依赖
-RUN pip install --no-cache-dir -r requirements.txt gunicorn && \
+RUN pip install --no-cache-dir -r requirements.txt && \
     find /usr/local -type d -name __pycache__ -exec rm -rf {} + && \
     rm -rf /root/.cache /tmp/*
 
 # 运行阶段
-FROM python:3.11-slim-bookworm
+FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
 # 从构建阶段复制 Python 包
-COPY --from=builder /usr/local/lib/python3.11/site-packages/ /usr/local/lib/python3.11/site-packages/
-COPY --from=builder /usr/local/bin/gunicorn /usr/local/bin/gunicorn
-
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/bin/uvicorn /usr/local/bin/uvicorn
 # 设置环境变量
 ENV PORT=5001 \
     WORKERS=4 \
