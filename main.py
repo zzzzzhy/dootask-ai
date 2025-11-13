@@ -62,7 +62,7 @@ async def periodic_check(app: FastAPI):
 async def lifespan(app: FastAPI):
     # 启动时初始化
     try:
-        task = asyncio.create_task(periodic_check(app))
+        # task = asyncio.create_task(periodic_check(app))
         redis_manager = RedisManager()
         logger.info("✅ 初始化成功")
         app.state.redis_manager = redis_manager
@@ -70,12 +70,12 @@ async def lifespan(app: FastAPI):
         logger.info(f"❌ 初始化失败: {str(e)}")
     yield
     # 关闭时
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-    logger.info("✅ 定时任务已停止")
+    # task.cancel()
+    # try:
+    #     await task
+    # except asyncio.CancelledError:
+    #     pass
+    # logger.info("✅ 定时任务已停止")
     # 关闭时清理
     logger.info("🛑 AI服务正在关闭...")
 
@@ -207,7 +207,9 @@ async def chat(request: Request):
 
     # 生成随机8位字符串
     stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=8))
-    
+    mcp = extras_json.get('mcp')
+    if isinstance(mcp,dict):
+        mcp = json.dumps(mcp)
     # 将输入存储到 Redis
     await app.state.redis_manager.set_input(send_id, {
         "text": text,
@@ -227,12 +229,12 @@ async def chat(request: Request):
         "max_tokens": max_tokens,
         "thinking": thinking,
         "context_limit": context_limit,
-
         "context_key": context_key,
         "stream_key": stream_key,
         "created_at": int(time.time()),
         "status": "prepare",
         "response": "",
+        "mcp": mcp,
     })
 
     # 通知 stream 地址
@@ -286,7 +288,7 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
             media_type='text/event-stream'
         )
     tools = []
-    if app.state.mcp:
+    if data.get("mcp")=="dootask" :
         client = MultiServerMCPClient(
             {
                 "dootask-task": {
@@ -299,6 +301,16 @@ async def stream(msg_id: str, stream_key: str, host: str = Header("", alias="Hos
             }
         )
         tools = await client.get_tools()
+    elif data.get("mcp"):
+        try:
+            mcpConfig = json.loads(data.get("mcp"))
+            client = MultiServerMCPClient(
+                mcpConfig
+            )
+            tools = await client.get_tools()
+        except Exception as e:
+            logger.error(f"Error getting tools from MCP: {e}")
+    
     async def stream_generate(msg_id, msg_key, data, redis_manager):
         """
         流式生成响应
@@ -562,7 +574,9 @@ async def invoke_auth(request: Request, token: str = Header(..., alias="Authoriz
     api_key = params.get('api_key')
     base_url = params.get('base_url')
     agency = params.get('agency')
-
+    mcp = params.get('mcp')
+    if isinstance(mcp,dict):
+        mcp = json.dumps(mcp)
     model_type, model_name, max_tokens, temperature, thinking = (
         params[k] for k in defaults.keys()
     )
@@ -573,6 +587,7 @@ async def invoke_auth(request: Request, token: str = Header(..., alias="Authoriz
     
     stream_key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
     storage_key = build_invoke_stream_key(stream_key)
+
 
     await app.state.redis_manager.set_input(storage_key, {
         "final_context": [message_to_dict(content) for content in context_messages],
@@ -588,6 +603,7 @@ async def invoke_auth(request: Request, token: str = Header(..., alias="Authoriz
         "status": "pending",
         "response": "",
         "created_at": int(time.time()),
+        "mcp": mcp
     })
 
     return JSONResponse(
@@ -651,7 +667,6 @@ async def invoke(request: Request, stream_key: str):
         )
     
     try:
-
         model = get_model_instance(
             model_type=data["model_type"],
             model_name=data["model_name"],
@@ -664,20 +679,30 @@ async def invoke(request: Request, stream_key: str):
             streaming=True,
         )
         host = request.headers.get("Host")
+        scheme = request.url.scheme
         tools = []
-        if app.state.mcp:
+        if data.get("mcp")=="dootask" :
             client = MultiServerMCPClient(
                 {
                     "dootask-task": {
-                        "url": f"https://{host}/apps/mcp_server/mcp",
+                        "url": f"{scheme}://{host}/apps/mcp_server/mcp",
                         "transport": "streamable_http",
                         "headers": {
-                            "token": data.get("user_token","unknown")
+                            "token": data.get("msg_user_token","unknown")
                         },
                     }
                 }
             )
             tools = await client.get_tools()
+        elif data.get("mcp"):
+            try:
+                mcpConfig = json.loads(data.get("mcp"))
+                client = MultiServerMCPClient(
+                    mcpConfig
+                )
+                tools = await client.get_tools()
+            except Exception as e:
+                logger.error(f"Error getting tools from MCP: {e}")
         agent = create_agent(model, tools)
 
     except Exception as exc:
@@ -819,12 +844,13 @@ async def invoke_synch(request: Request, token: str = Header(..., alias="Authori
             streaming=False,
         )
         host = request.headers.get("Host")
+        scheme = request.url.scheme
         tools = []
-        if app.state.mcp:
+        if params.get("mcp")=="dootask" :
             client = MultiServerMCPClient(
                 {
                     "dootask-task": {
-                        "url": f"https://{host}/apps/mcp_server/mcp",
+                        "url": f"{scheme}://{host}/apps/mcp_server/mcp",
                         "transport": "streamable_http",
                         "headers": {
                             "token": token or "unknown"
@@ -833,6 +859,15 @@ async def invoke_synch(request: Request, token: str = Header(..., alias="Authori
                 }
             )
             tools = await client.get_tools()
+        elif params.get("mcp") and isinstance(params.get("mcp"),dict):
+            try:
+                client = MultiServerMCPClient(
+                    params.get("mcp")
+                )
+                tools = await client.get_tools()
+            except Exception as e:
+                logger.error(f"Error getting tools from MCP: {e}")
+                
         agent = create_agent(model, tools)
     except Exception as exc:
         return JSONResponse(content={"code": 400, "error": str(exc)}, status_code=400)
@@ -903,7 +938,6 @@ async def models_list(
 @app.get('/health')
 async def health():
     try:
-
         await app.state.redis_manager.client.ping()
         return JSONResponse(content={"status": "healthy", "redis": "connected"}, status_code=200)
     except Exception as e:
